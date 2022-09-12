@@ -1,0 +1,424 @@
+import NetInfo, { NetInfoState } from "@react-native-community/netinfo";
+import _ from 'lodash';
+import { storeExifSessions, getStoredExifSession, storeExifSessionIds, getStoredExifSessionIds } from './async_storage';
+import {
+  IExifSessions,
+  IExifSessionIds,
+  IStatus,
+  IStats,
+  ICopyEta,
+  IImageCount,
+  IGpsStatus,
+  ILensNumber,
+  IRestart
+} from './api_types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// const SERVER_IP = 'https://79dcc177-303f-496b-b6ee-c818b70db5f8.mock.pstmn.io';
+// const SERVER_IP = 'https://elephants.hopto.org:443';
+const SERVER_IP = 'https://detweb.hopto.org:443';
+
+let syncing = false;
+export const unsubscribe = NetInfo.addEventListener((state) => {
+  console.log("Connection type", state.isConnected);
+  if (state.isConnected) {
+    // check if there are locally stored data to transmit
+    if (!syncing) {
+      // the event listener calls this 3 times -> avoid by checking bool status
+      syncing = true;
+      syncExif('').then(() => { syncing = false; }).catch((err) => {
+        console.log(err.toString());
+        syncing = false;
+      });
+    }
+  } else {
+    syncing = false;
+  }
+});
+
+export const syncExif = async (ip: string) => {
+  const netInfo = await NetInfo.fetch();
+
+  if (ip !== '') {
+    try {
+      await syncFromPi(ip, netInfo);
+      await syncFromLocalStorage(netInfo);
+      return "Sync successful";
+    } catch (e) {
+      return e;
+    }
+  } else {
+    try {
+      await syncFromLocalStorage(netInfo);
+      return "Synched from local storage";
+    } catch (e) {
+      return e;
+    }
+  }
+}
+
+export const getStatus = (reqIp: string) => {
+  const promise = new Promise<IStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/status`).then(res => res.json())
+      .then((res: IStatus) => {
+        // console.log(res);
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getStatus', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getStats = (reqIp: string) => {
+  const promise = new Promise<IStats>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/statistics`).then(async res => {
+      const contentType = res.headers.get("content-type");
+      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+        try {
+          const msgBody = await res.json();
+          if (msgBody.msg) {
+            throw new Error(msgBody.msg);
+          }
+          throw new Error("Bad response from server");
+        } catch (e) {
+          throw e;
+        }
+      } else if (res.status >= 400 && res.status < 600) {
+        throw new Error("Bad response from server");
+      } else {
+        return res.json();
+      }
+    })
+      .then((res: IStats) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getStats', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getCopyEta = (reqIp: string) => {
+  const promise = new Promise<ICopyEta>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/copy_eta`).then(async res => {
+      const contentType = res.headers.get("content-type");
+      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+        try {
+          const msgBody = await res.json();
+          if (msgBody.msg) {
+            throw new Error(msgBody.msg);
+          }
+          throw new Error("Bad response from server");
+        } catch (e) {
+          throw e;
+        }
+      } else if (res.status >= 400 && res.status < 600) {
+        throw new Error("Bad response from server");
+      } else {
+        return res.json();
+      }
+    })
+      .then((res: ICopyEta) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getCopyEta', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getExifSessions = (reqIp: string, sessionIds: IExifSessionIds) => {
+  const promise = new Promise<IExifSessions>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/exif_info`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sessionIds)
+      }).then(async res => {
+        const contentType = res.headers.get("content-type");
+        if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+          try {
+            const msgBody = await res.json();
+            if (msgBody.msg) {
+              throw new Error(msgBody.msg);
+            }
+            throw new Error("Bad response from server");
+          } catch (e) {
+            throw e;
+          }
+        } else if (res.status >= 400 && res.status < 600) {
+          throw new Error("Bad response from server");
+        } else {
+          return res.json();
+        }
+      })
+      .then((res: IExifSessions) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getExifSessions', err.toString());
+        reject(err);
+      });
+  });
+
+  return promise;
+}
+
+export const getExifSessionIds = (reqIp: string) => {
+  const promise = new Promise<IExifSessionIds>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/exif_sessions`).then(async res => {
+      const contentType = res.headers.get("content-type");
+      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+        try {
+          const msgBody = await res.json();
+          if (msgBody.msg) {
+            throw new Error(msgBody.msg);
+          }
+          throw new Error("Bad response from server");
+        } catch (e) {
+          throw e;
+        }
+      } else if (res.status >= 400 && res.status < 600) {
+        throw new Error("Bad response from server");
+      } else {
+        return res.json();
+      }
+    })
+      .then((res: IExifSessionIds) => {
+        console.log(res);
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getExifSessionIds', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const sendExifSessions = (data: IExifSessions) => {
+  console.log('sendExifSessions length', data.sessions.length);
+  // console.log(JSON.stringify(data));
+  const promise = new Promise<void>((resolve, reject) => {
+    fetch(`${SERVER_IP}/api/exif_info`,
+      {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then((res) => {
+        resolve();
+      })
+      .catch((err) => {
+        console.log('sendExifSessions', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const sendExifSessionIds = (data: IExifSessionIds) => {
+  console.log('sendExifSessionIds', data);
+  const promise = new Promise<IExifSessionIds>((resolve, reject) => {
+    fetch(`${SERVER_IP}/api/exif_sessions`,
+      {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then((res: IExifSessionIds) => {
+        console.log(res);
+        resolve(res);
+      })
+      .catch((err) => {
+        console.log('sendExifSessionIds', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getImageCount = (reqIp: string) => {
+  const promise = new Promise<IImageCount>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/images_captured`).then(async res => {
+      const contentType = res.headers.get("content-type");
+      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+        try {
+          const msgBody = await res.json();
+          if (msgBody.msg) {
+            throw new Error(msgBody.msg);
+          }
+          throw new Error("Bad response from server");
+        } catch (e) {
+          throw e;
+        }
+      } else if (res.status >= 400 && res.status < 600) {
+        throw new Error("Bad response from server");
+      } else {
+        return res.json();
+      }
+    })
+      .then((res: IImageCount) => {
+        console.log(res);
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getImageCount', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+const syncFromPi = async (ip: string, netInfo: NetInfoState) => {
+  console.log('syncFromPi', netInfo.isConnected, ip);
+  let availableIds: IExifSessionIds = { sessionIds: [] };
+  try {
+    availableIds = await getExifSessionIds(ip);
+  } catch (e) {
+    throw 'Sync to local storage failed';
+  }
+
+  if (netInfo.isConnected) {
+    // has internet
+    try {
+      const missingIds = await sendExifSessionIds(availableIds);
+      const exifSessions = await getExifSessions(ip, missingIds);
+      let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
+      // exifSessions could be very large -> send one by one
+      console.log('syncFromPi', availableIds.sessionIds.length, missingIds.sessionIds.length, exifSessions.sessions.length)
+      for (const exifSession of exifSessions.sessions) {
+        try {
+          await sendExifSessions({ sessions: [exifSession] });
+          await AsyncStorage.removeItem(`@Tricap:sessions${exifSession.sessionId}`);          
+        } catch (e) {
+          console.log(e);
+          updatedMissingIds.sessionIds.push(exifSession.sessionId);
+        }        
+      }
+      await storeExifSessionIds(updatedMissingIds);
+    } catch (e) {
+      // send failed -> save to local storage
+      try {
+        const exifSessions = await getExifSessions(ip, availableIds);
+        await storeExifSessions(exifSessions); // call before storeExifSessionIds
+        await storeExifSessionIds(availableIds);
+      } catch (e) {
+        throw 'Sync to local storage failed';
+      }
+      throw 'Synched to local storage';
+    }
+  } else {
+    // no internet -> save to local storage
+    try {
+      const exifSessions = await getExifSessions(ip, availableIds);
+      await storeExifSessions(exifSessions); // call before storeExifSessionIds
+      await storeExifSessionIds(availableIds);
+    } catch (e) {
+      throw 'Sync to local storage failed';
+    }
+    throw 'Synched to local storage';
+  }
+}
+
+const syncFromLocalStorage = async (netInfo: NetInfoState) => {
+  console.log('syncLocalStorage', netInfo.isConnected);
+  if (!netInfo.isConnected) {
+    throw 'Sync from local storage failed';
+  }
+
+  // has internet
+  const availableIds = await getStoredExifSessionIds();
+  if (availableIds) {
+    try {
+      const missingIds = await sendExifSessionIds(availableIds);
+      let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
+      for (const missingId of missingIds.sessionIds) {
+        try {
+          const storedSession = await getStoredExifSession(missingId);
+          await sendExifSessions({ sessions: [storedSession] });
+          await AsyncStorage.removeItem(`@Tricap:sessions${missingId}`);
+        } catch (e) {
+          console.log(e);
+          updatedMissingIds.sessionIds.push(missingId);
+        }
+      }
+      await storeExifSessionIds(updatedMissingIds);
+    } catch (e) {
+      throw 'Sync from local storage failed';
+    }
+  } else {
+    throw 'Nothing to sync from local storage';
+  }
+}
+
+export const checkGps = (reqIp: string) => {
+  const promise = new Promise<IGpsStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/_check_gps`).then(async res => {
+      const contentType = res.headers.get("content-type");
+      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+        try {
+          const msgBody = await res.json();
+          if (msgBody.msg) {
+            throw new Error(msgBody.msg);
+          }
+          throw new Error("Bad response from server");
+        } catch (e) {
+          throw e;
+        }
+      } else if (res.status >= 400 && res.status < 600) {
+        throw new Error("Bad response from server");
+      } else {
+        return res.json();
+      }
+    })
+      .then((res: IGpsStatus) => {
+        console.log(res);
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('checkGps', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getLensNumber = (reqIp: string) => {
+  const promise = new Promise<ILensNumber>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/lensNumber`).then(res => res.json())
+      .then((res: ILensNumber) => {
+        console.log(res);
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getLensNumber', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const restartService = (reqIp: string) => {
+  const promise = new Promise<IRestart>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/restart`).then(res => res.json())
+      .then((res: IRestart) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('restartService', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
