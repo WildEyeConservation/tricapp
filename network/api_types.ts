@@ -32,6 +32,7 @@ export interface IStatus {
   cams: string[];
   camError: boolean;
   progress?: ICopyEta;
+  gps: boolean;
 }
 
 export interface ILensNumber {
@@ -41,9 +42,6 @@ export interface ILensNumber {
 export interface IRestart {
   success: boolean;
 }
-export interface IGpsStatus {
-  gps_status_of_cams: string[];
-}
 
 interface IExifSessionInfo {
   FileName: string;
@@ -52,10 +50,15 @@ interface IExifSessionInfo {
   ExifImageHeight: number;
   ExifImageWidth: number;
   GPSAltitude: string;
-  GPSDateStamp: string;
-  GPSLatitude: string;
-  GPSLongitude: string;
-  GPSTimeStamp: string;
+  GPSDateStamp: number;
+  GPSLatitude: number;
+  GPSLongitude: number;
+  GPSLatitudeDir: string;
+  GPSLongitudeDir: string;
+  GPSQuality: number;
+  AccX: number;
+  AccY: number;
+  AccZ: number;
   ISO: number;
   ShutterSpeedValue: string;
   FocusMode: string;

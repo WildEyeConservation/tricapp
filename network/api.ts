@@ -8,11 +8,11 @@ import {
   IStats,
   ICopyEta,
   IImageCount,
-  IGpsStatus,
   ILensNumber,
   IRestart
 } from './api_types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Toast from 'react-native-simple-toast';
 
 // const SERVER_IP = 'https://79dcc177-303f-496b-b6ee-c818b70db5f8.mock.pstmn.io';
 // const SERVER_IP = 'https://elephants.hopto.org:443';
@@ -208,7 +208,24 @@ export const getExifSessionIds = (reqIp: string) => {
 export const sendExifSessions = (data: IExifSessions) => {
   console.log('sendExifSessions length', data.sessions.length);
   // console.log(JSON.stringify(data));
+  try {
+    if (data.sessions.length > 0) {
+      console.log(data.sessions[0].sessionInfo.length);
+      if (data.sessions[0].sessionInfo.length > 0) {
+        console.log(data.sessions[0].sessionInfo[0].exifInfo.length);
+        if (data.sessions[0].sessionInfo[0].exifInfo.length > 0) {
+          console.log(data.sessions[0].sessionId, JSON.stringify(data.sessions[0].sessionInfo[0].exifInfo[0]));
+        }
+      }
+    }
+  } catch (e) {
+    console.log(`Print exif session failed {e}`);
+  }
+
   const promise = new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error("Fetch timeout"));
+    }, 5000);
     fetch(`${SERVER_IP}/api/exif_info`,
       {
         method: "POST",
@@ -216,6 +233,7 @@ export const sendExifSessions = (data: IExifSessions) => {
         body: JSON.stringify(data)
       })
       .then((res) => {
+        clearTimeout(timeoutId);
         resolve();
       })
       .catch((err) => {
@@ -229,6 +247,9 @@ export const sendExifSessions = (data: IExifSessions) => {
 export const sendExifSessionIds = (data: IExifSessionIds) => {
   console.log('sendExifSessionIds', data);
   const promise = new Promise<IExifSessionIds>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error("Fetch timeout"));
+    }, 1000);
     fetch(`${SERVER_IP}/api/exif_sessions`,
       {
         method: "POST",
@@ -238,6 +259,7 @@ export const sendExifSessionIds = (data: IExifSessionIds) => {
       .then(res => res.json())
       .then((res: IExifSessionIds) => {
         console.log(res);
+        clearTimeout(timeoutId);
         resolve(res);
       })
       .catch((err) => {
@@ -294,6 +316,7 @@ const syncFromPi = async (ip: string, netInfo: NetInfoState) => {
     try {
       const missingIds = await sendExifSessionIds(availableIds);
       const exifSessions = await getExifSessions(ip, missingIds);
+      Toast.show(`Syncing ${exifSessions.sessions.length} sessions...`, Toast.SHORT);      
       let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
       // exifSessions could be very large -> send one by one
       console.log('syncFromPi', availableIds.sessionIds.length, missingIds.sessionIds.length, exifSessions.sessions.length)
@@ -342,6 +365,7 @@ const syncFromLocalStorage = async (netInfo: NetInfoState) => {
   if (availableIds) {
     try {
       const missingIds = await sendExifSessionIds(availableIds);
+      Toast.show(`Syncing ${missingIds.sessionIds.length} local sessions...`, Toast.SHORT);      
       let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
       for (const missingId of missingIds.sessionIds) {
         try {
@@ -360,38 +384,6 @@ const syncFromLocalStorage = async (netInfo: NetInfoState) => {
   } else {
     throw 'Nothing to sync from local storage';
   }
-}
-
-export const checkGps = (reqIp: string) => {
-  const promise = new Promise<IGpsStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/_check_gps`).then(async res => {
-      const contentType = res.headers.get("content-type");
-      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
-        try {
-          const msgBody = await res.json();
-          if (msgBody.msg) {
-            throw new Error(msgBody.msg);
-          }
-          throw new Error("Bad response from server");
-        } catch (e) {
-          throw e;
-        }
-      } else if (res.status >= 400 && res.status < 600) {
-        throw new Error("Bad response from server");
-      } else {
-        return res.json();
-      }
-    })
-      .then((res: IGpsStatus) => {
-        console.log(res);
-        resolve(res);
-      })
-      .catch((err: any) => {
-        console.log('checkGps', err.toString());
-        reject(err);
-      });
-  });
-  return promise;
 }
 
 export const getLensNumber = (reqIp: string) => {

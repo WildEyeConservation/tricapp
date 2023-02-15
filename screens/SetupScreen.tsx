@@ -18,6 +18,7 @@ import { wifiSetup } from '../store/actions/BtActions';
 import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { restartService } from '../network/api';
 
 export let phoneNr = '';
 let hotspotSsid = '';
@@ -71,6 +72,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   const dispatch = useDispatch();
   const isConnected = useSelector((state: RootState) => state.bt.connected);
   const wifiDone = useSelector((state: RootState) => state.bt.wifiDone);
+  const ip = useSelector((state: RootState) => state.bt.ip);
 
   useEffect(() => {
     AsyncStorage.getItem('@Tricap:useHotspot')
@@ -207,11 +209,17 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           />
         </View>
         <View style={styles.horizontalSpacerThick}></View>
-        <View style={{ alignItems: 'center', width: '100%', padding: 5 }}>
+        <View style={{ alignItems: 'center', width: '100%', padding: 5, flexDirection: 'row', justifyContent: 'space-around' }}>
           <MyButton
             title='Clear data'
             onPress={() => {
               AsyncStorage.clear().then(() => Toast.show('Data cleared')).catch((err) => console.log(err));
+            }}
+          ></MyButton>
+          <MyButton
+            title='Restart'
+            onPress={() => {
+              restartService(ip).then(() => Toast.show('Restart requested')).catch((err) => Toast.show(err.toString));
             }}
           ></MyButton>
         </View>

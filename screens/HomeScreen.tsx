@@ -11,7 +11,7 @@ import {
   Permission,
   Image,
   Dimensions,
-  Platform 
+  Platform
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { HomeProps } from '../navigation/types';
@@ -37,7 +37,6 @@ import {
   getCopyEta,
   getImageCount,
   syncExif,
-  checkGps,
   getLensNumber,
   restartService
 } from '../network/api';
@@ -126,7 +125,6 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [externalTime, setExternalTime] = useState('0 s');
   const [totalTime, setTotalTime] = useState('0 s');
   const [samplePeriodS, setSamplePeriodS] = useState(0);
-  const [gpsResult, setGpsResult] = useState('');
   const [lensNumber, setLensNumber] = useState('');
 
   useEffect(() => {
@@ -277,7 +275,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       getStatusInterval = setInterval(() => {
         getStatus(ip)
           .then(res => setPiStatus(res))
-          .catch(() => { });
+          .catch((e) => { });
       }, 2000);
     } catch (e) {
       console.log(e);
@@ -389,6 +387,11 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             <Text style={styles.textBold}>Approx. {totalTime} left</Text>
           </View>
           <View style={styles.horizontalSpacerThick}></View>
+          <View style={{ height: 10 }}></View>
+          <View style={styles.estimation}>
+            <Text style={styles.textBold}>GPS status</Text>
+            <Text style={styles.textBold}>{piStatus?.gps ? "Connected" : "Not connected"}</Text>
+          </View>
           {/* <View style={{ height: 10 }}></View>
             <View style={styles.estimation}>
               <Text style={styles.textBold}>Battery</Text>
@@ -401,50 +404,6 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
               <Text style={styles.textBold}>{samplePeriodS}s</Text>
             </View>
             <View style={styles.horizontalSpacerThick}></View> */}
-          <View style={{ width: '100%', paddingTop: 5, paddingBottom: 5 }}>
-            <View style={styles.testButtons}>
-              <MyButton
-                title='Test GPS'
-                onPress={() => {
-                  setGpsResult('');
-                  Toast.show('Testing GPS...');
-                  checkGps(ip)
-                    .then(res => {
-                      const successCount = res.gps_status_of_cams.filter(item => item === 'True').length;
-                      const resultString = `GPS test: ${successCount}/${res.gps_status_of_cams.length} passed`;
-                      Toast.show(resultString);
-                      setGpsResult(resultString);
-                    })
-                    .catch((err) => Toast.show(err.toString()));
-                }}
-              ></MyButton>
-              <MyButton
-                title='Restart'
-                onPress={() => {
-                  restartService(ip).then(() => Toast.show('Restart requested')).catch((err) => Toast.show(err.toString));
-                }}
-              ></MyButton>
-              {/* <MyButton
-                title='Verify Lens'
-                onPress={() => {
-                  Toast.show('Verify lens number');
-                  setLensNumber('');
-                  getLensNumber(ip)
-                    .then(res => {
-                      Toast.show(res.lens);
-                      setLensNumber(res.lens);
-                    })
-                    .catch((err) => Toast.show(err.toString()));
-                }}
-              ></MyButton> */}
-            </View>
-            <View style={styles.testButtons}>
-              {gpsResult === '' ? <></> : <Text style={styles.textNormal}>{gpsResult}</Text>}
-            </View>
-            <View style={styles.testButtons}>
-              {lensNumber === '' ? <></> : <Text style={styles.textNormal}>{lensNumber}</Text>}
-            </View>
-          </View>
           <View style={styles.horizontalSpacerThick}></View>
           <View style={{ paddingTop: 10 }}>
             <Image source={require('../assets/RigSetup.png')} style={{ resizeMode: 'contain', width: Dimensions.get('window').width * 0.95, height: Dimensions.get('window').height / 2.5 }} />
