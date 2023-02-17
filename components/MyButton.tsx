@@ -6,13 +6,21 @@ import {
   Button
 } from 'react-native';
 
-type MyButtonProps = Button['props'];
+interface IButtonAdd {
+  width?: number;
+}
+
+type MyButtonProps = Button['props'] & IButtonAdd;
 
 const MyButton = (props: MyButtonProps) => {
-  const { title, onPress, disabled } = props;
+  const { title, onPress, disabled, width } = props;
 
   return (
-    <TouchableOpacity onPress={onPress} style={{ ...styles.button, backgroundColor: disabled ? 'grey': 'blue' }} disabled={disabled}>
+    <TouchableOpacity onPress={onPress} style={{
+      ...styles.button,
+      backgroundColor: disabled ? 'grey' : 'blue',
+      width: width ? width : styles.button.width
+    }} disabled={disabled}>
       <Text style={styles.text}>{title}</Text>
     </TouchableOpacity>
   )

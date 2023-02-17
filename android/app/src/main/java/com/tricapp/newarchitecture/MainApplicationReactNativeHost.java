@@ -1,4 +1,4 @@
-package com.tricapp.newarchitecture;
+package com.tricap.newarchitecture;
 
 import android.app.Application;
 import androidx.annotation.NonNull;
@@ -19,9 +19,9 @@ import com.facebook.react.fabric.CoreComponentsRegistry;
 import com.facebook.react.fabric.FabricJSIModuleProvider;
 import com.facebook.react.fabric.ReactNativeConfig;
 import com.facebook.react.uimanager.ViewManagerRegistry;
-import com.tricapp.BuildConfig;
-import com.tricapp.newarchitecture.components.MainComponentsRegistry;
-import com.tricapp.newarchitecture.modules.MainApplicationTurboModuleManagerDelegate;
+import com.tricap.BuildConfig;
+import com.tricap.newarchitecture.components.MainComponentsRegistry;
+import com.tricap.newarchitecture.modules.MainApplicationTurboModuleManagerDelegate;
 import java.util.ArrayList;
 import java.util.List;
 

@@ -7,7 +7,8 @@ import {
   StyleSheet,
   TextInput,
   ActivityIndicator,
-  Switch
+  Switch,
+  TouchableOpacity
 } from 'react-native';
 import { SetupProps } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,210 +19,203 @@ import { wifiSetup } from '../store/actions/BtActions';
 import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { restartService } from '../network/api';
+import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
+import { restartService, getStats, setCaptureInterval } from '../network/api';
+import { getStoredIps, getCaptureInterval } from '../network/async_storage'
+import { IGpioCamera, IGpioCameraSettings } from '../network/api_types';
+import { setIps } from '../store/actions/WifiActions';
+
+interface IRemove {
+  (ip: string): void;
+}
 
 export let phoneNr = '';
-let hotspotSsid = '';
-let hotspotPassword = '';
 
-let wifiSetupBusy = false;
+const renderFixedCols = (item: string | number, key: string) => {
+  return (
+    <View style={{ flex: 1, alignItems: 'flex-start' }} key={key}>
+      <Text style={styles.textBold}>{item}</Text>
+    </View>
+  )
+}
 
-AsyncStorage.getItem('@Tricap:phoneNr')
-  .then((res) => {
-    if (res) {
-      phoneNr = res;
-    }
-    console.log(phoneNr);
-  })
-  .catch((err) => {
-    console.log(err);
-  });
-
-AsyncStorage.getItem('@Tricap:hotspotSsid')
-  .then((res) => {
-    if (res) {
-      hotspotSsid = res;
-    }
-    console.log(hotspotSsid);
-  })
-  .catch((err) => {
-    console.log(err);
-  });
-
-AsyncStorage.getItem('@Tricap:hotspotPassword')
-  .then((res) => {
-    if (res) {
-      hotspotPassword = res;
-    }
-    console.log(hotspotPassword);
-  })
-  .catch((err) => {
-    console.log(err);
-  });
+const renderSettings = (item: IGpioCameraSettings, key: string, callback: IRemove) => {
+  return (
+    <View style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.ip}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.captureInterval}s</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row' }}>
+        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={item.captureInterval === 0} onPress={() => {
+          Toast.show('Restarting...');
+          restartService(item.ip).then((res) => { }).catch((e) => console.log(e));
+        }}>
+          <IconCom name="restart" size={30} color={'black'} />
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+          console.log('do remove');
+          callback(item.ip);
+        }}>
+          <Icon name="delete" size={30} color={'black'} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  )
+}
 
 const SetupScreen = ({ route, navigation }: SetupProps) => {
-  const [newPhoneNr, setNewPhoneNr] = useState(phoneNr);
-  const [newSsid, setNewSsid] = useState(hotspotSsid);
-  const [newPassword, setNewPassword] = useState(hotspotPassword);
-  const [validPhoneNr, setValidPhoneNr] = useState(phoneNr !== '');
-  const [validHotspot, setValidHotspot] = useState(hotspotPassword !== '' && hotspotSsid !== '');
-  const [updatingHotspot, setUpdatingHotspot] = useState(false);
-  const [useManualHotspotEnabled, setUseManualHotspotEnable] = useState(false);
-  const [secureText, setSecureText] = useState(true);
-
   const dispatch = useDispatch();
-  const isConnected = useSelector((state: RootState) => state.bt.connected);
-  const wifiDone = useSelector((state: RootState) => state.bt.wifiDone);
-  const ip = useSelector((state: RootState) => state.bt.ip);
+
+  const ips = useSelector((state: RootState) => state.wifi.ips);
+
+  const [gpioCams, setGpioCams] = useState<IGpioCameraSettings[]>([]);
+  const [newCaptureInterval, setNewCaptureInterval] = useState<number>(3.0);
 
   useEffect(() => {
-    AsyncStorage.getItem('@Tricap:useHotspot')
-      .then((res) => {
-        if (res === 'software' || res === '' || res === null) {
-          setUseManualHotspotEnable(false);
-        } else {
-          setUseManualHotspotEnable(true);
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity onPress={() => {
+          Toast.show('Refreshing...');
+          buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
+        }}>
+          <Icon name="refresh" size={30} color={'black'} />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
+  useEffect(() => {
+    getStoredIps().then((storedIps) => {
+      if (storedIps !== undefined && storedIps.length > 0) {
+        dispatch(setIps(storedIps));
+      }
+    }).catch((e) => console.log(e));
+    getCaptureInterval().then((interval) => {
+      console.log('getCaptureInterval', interval);
+      if (interval !== undefined && interval != '') {
+        const floatInterval = parseFloat(interval);
+        if (!isNaN(floatInterval)) {
+          setNewCaptureInterval(floatInterval);
         }
-        console.log(res);
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+      }
+    });
   }, []);
 
   useEffect(() => {
-    console.log('wifiDone', updatingHotspot, wifiSetupBusy);
-    if (updatingHotspot && wifiSetupBusy) {
-      setUpdatingHotspot(false);
-      wifiSetupBusy = false;
-      if (useManualHotspotEnabled) {
-        Toast.show('Close the application and manually start your hotspot.', Toast.LONG);
+    buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
+  }, [ips]);
+
+  const buildNetwork = async (ips: string[]) => {
+    const newGpioCams: IGpioCameraSettings[] = []; // make copy
+    for (const ip of ips) {
+      try {
+        const stats = await getStats(ip);
+
+        newGpioCams.push({
+          ip: ip,
+          captureInterval: stats.captureInterval,
+        });
+      } catch (e) {
+        newGpioCams.push({
+          ip: ip,
+          captureInterval: 0,
+        });
       }
     }
-  }, [wifiDone]);
+
+    return newGpioCams;
+  }
+
+  const updateCaptureInterval = async (interval: number) => {
+    const roundedNum = Math.round(interval * 10) / 10;
+    try {
+      for (const gpioCam of gpioCams) {
+        await setCaptureInterval(gpioCam.ip, roundedNum).then(() => { }).catch((e) => console.log(e));
+      }
+    } catch (e) {
+      console.log(e)
+    }
+    try {
+      await AsyncStorage.setItem('@Tricap:captureInterval', roundedNum.toString());
+      const detectedCams = await buildNetwork(ips);
+      setGpioCams(detectedCams);
+      setNewCaptureInterval(roundedNum);
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  if (gpioCams.length === 0) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.screenView}>
+          <View style={{ ...styles.card, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.textBold}>No devices</Text>
+            <ActivityIndicator size="small" color='black' />
+          </View>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={{ width: '100%', alignItems: 'flex-start', justifyContent: 'flex-start', padding: 5 }}>
-        <View style={styles.normal}>
-          <Text style={styles.textBold}>SMS</Text>
-        </View>
-        <View style={styles.horizontalSpacer}></View>
-        <View style={styles.row}>
-          <Text style={styles.textNormal}>Phone number:</Text>
-          <TextInput
-            style={styles.input}
-            value={newPhoneNr}
-            onChangeText={setNewPhoneNr}
-            onEndEditing={() => {
-              console.log('phoneNr', phoneNr, newPhoneNr);
-              const phoneNrRegex = /^[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}$/im;
-              if (phoneNrRegex.test(newPhoneNr) || newPhoneNr === '') {
-                AsyncStorage.setItem('@Tricap:phoneNr', newPhoneNr).then(() => { }).catch(e => console.log(e));
-                phoneNr = newPhoneNr;
-                setValidPhoneNr(true);
-              } else {
-                console.log('Invalid phone number');
-                Toast.show('Invalid phone number', Toast.SHORT);
-              }
-            }}
-          ></TextInput>
-        </View>
-        <View style={{ alignItems: 'center', width: '100%', padding: 5 }}>
-          <MyButton
-            title='Test SMS'
-            disabled={!validPhoneNr}
-            onPress={() => {
-              Toast.show('Testing SMS...');
-              sendSms('Test SMS');
-            }}
-          ></MyButton>
-        </View>
+      <View style={styles.screenView}>
+        {gpioCams.length === 0 ? <View></View> : (
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', padding: 5 }}>
+              {["Device", "Interval", ""].map((item, index) => (
+                renderFixedCols(item, index.toString())
+              ))}
+            </View>
+            <View style={styles.horizontalSpacer}></View>
+            {gpioCams.map((item, index: number) => (
+              renderSettings(item, index.toString(), (ret) => {
+                Toast.show('Removing...');
+                const filteredIps = ips.filter((ip: string) => ip !== ret);
+                console.log('filteredIps', filteredIps);
+                AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
+                dispatch(setIps(filteredIps));
+              })
+            ))}
+          </View>)}
         <View style={styles.horizontalSpacerThick}></View>
-        <View style={styles.normal}>
-          <Text style={styles.textBold}>Hotspot</Text>
-        </View>
-        <View style={styles.horizontalSpacer}></View>
-        <Text style={{ ...styles.textNormal, opacity: 0.8 }}>Note: For the best user experience, enter your own hotspot information here and manually start a hotspot from the Android OS settings.</Text>
-        <View style={styles.row}>
-          <Text style={styles.textNormal}>SSID:</Text>
-          <TextInput
-            style={styles.input}
-            value={newSsid}
-            onChangeText={setNewSsid}
-            onEndEditing={() => {
-              AsyncStorage.setItem('@Tricap:hotspotSsid', newSsid).then(() => { }).catch(e => console.log(e));
-              hotspotSsid = newSsid;
-              setValidHotspot(hotspotSsid !== '' && hotspotPassword !== '');
-            }}
-          ></TextInput>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.textNormal}>Password:</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TextInput
-              style={styles.input}
-              value={newPassword}
-              secureTextEntry={secureText}
-              onChangeText={setNewPassword}
-              onEndEditing={() => {
-                AsyncStorage.setItem('@Tricap:hotspotPassword', newPassword).then(() => { }).catch(e => console.log(e));
-                hotspotPassword = newPassword;
-                setValidHotspot(hotspotSsid !== '' && hotspotPassword !== '');
-              }}
-            ></TextInput>
-            <Icon style={{ paddingHorizontal: 5 }} color='black' onPress={() => setSecureText(setSecureText => !setSecureText)} name="remove-red-eye" size={20} />
-          </View>
-        </View>
-        <View style={{ alignItems: 'center', width: '100%', padding: 5 }}>
-          {updatingHotspot ? (
-            <ActivityIndicator size="small" color='black' />
-          ) : (
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Set interval:</Text>
             <MyButton
-              title='Save hotspot'
-              disabled={!validHotspot}
-              onPress={() => {
-                if (isConnected) {
-                  Toast.show('Saving hotspot...');
-                  wifiSetupBusy = true;
-                  dispatch(wifiSetup(hotspotSsid, hotspotPassword));
-                  setUpdatingHotspot(true);
-                  wait(4000).then(() => setUpdatingHotspot(false)).catch(e => console.log(e));
-                } else {
-                  Toast.show('Bluetooth not connected');
-                }
+              title='-0.5'
+              width={50}
+              onPress={async () => {
+                updateCaptureInterval(newCaptureInterval - 0.5).then(() => { }).catch((e) => console.log(e));
               }}
             ></MyButton>
-          )}
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.textNormal}>Use this hotspot:</Text>
-          <Switch
-            onValueChange={(value) => {
-              setUseManualHotspotEnable(value);
-              if (value) {
-                AsyncStorage.setItem('@Tricap:useHotspot', 'manual').then(() => { }).catch(e => console.log(e));
-              } else {
-                AsyncStorage.setItem('@Tricap:useHotspot', 'software').then(() => { }).catch(e => console.log(e));
-              }
-            }}
-            value={useManualHotspotEnabled}
-          />
-        </View>
-        <View style={styles.horizontalSpacerThick}></View>
-        <View style={{ alignItems: 'center', width: '100%', padding: 5, flexDirection: 'row', justifyContent: 'space-around' }}>
-          <MyButton
-            title='Clear data'
-            onPress={() => {
-              AsyncStorage.clear().then(() => Toast.show('Data cleared')).catch((err) => console.log(err));
-            }}
-          ></MyButton>
-          <MyButton
-            title='Restart'
-            onPress={() => {
-              restartService(ip).then(() => Toast.show('Restart requested')).catch((err) => Toast.show(err.toString));
-            }}
-          ></MyButton>
+            <MyButton
+              title='-0.1'
+              width={50}
+              onPress={async () => {
+                updateCaptureInterval(newCaptureInterval - 0.1).then(() => { }).catch((e) => console.log(e));
+              }}
+            ></MyButton>
+            <Text style={styles.textNormal}>{newCaptureInterval}s</Text>
+            <MyButton
+              title='+0.1'
+              width={50}
+              onPress={async () => {
+                updateCaptureInterval(newCaptureInterval + 0.1).then(() => { }).catch((e) => console.log(e));
+              }}
+            ></MyButton>
+            <MyButton
+              title='+0.5'
+              width={50}
+              onPress={async () => {
+                updateCaptureInterval(newCaptureInterval + 0.5).then(() => { }).catch((e) => console.log(e));
+              }}
+            ></MyButton>
+          </View>
         </View>
       </View>
     </SafeAreaView >
@@ -234,14 +228,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start'
   },
-  normal: {
+  screenView: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'flex-start',
+    padding: 2,
+    margin: 2
   },
   input: {
     marginHorizontal: 10,
     borderBottomWidth: 1,
+    color: 'black'
   },
   horizontalSpacer: {
     backgroundColor: '#ccc',
@@ -251,7 +248,8 @@ const styles = StyleSheet.create({
   horizontalSpacerThick: {
     backgroundColor: '#ccc',
     width: '95%',
-    height: 2
+    height: 2,
+    marginVertical: 5
   },
   row: {
     flexDirection: 'row',
@@ -265,7 +263,18 @@ const styles = StyleSheet.create({
   textBold: {
     color: 'black',
     fontWeight: 'bold'
-  }
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+    padding: 4,
+    width: '100%',
+  },
 });
 
 export default SetupScreen;

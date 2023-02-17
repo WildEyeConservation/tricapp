@@ -9,7 +9,7 @@ import {
   ICopyEta,
   IImageCount,
   ILensNumber,
-  IRestart
+  IReturnStatus
 } from './api_types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-simple-toast';
@@ -17,6 +17,7 @@ import Toast from 'react-native-simple-toast';
 // const SERVER_IP = 'https://79dcc177-303f-496b-b6ee-c818b70db5f8.mock.pstmn.io';
 // const SERVER_IP = 'https://elephants.hopto.org:443';
 const SERVER_IP = 'https://detweb.hopto.org:443';
+const TIMEOUT = 2000;
 
 let syncing = false;
 export const unsubscribe = NetInfo.addEventListener((state) => {
@@ -59,46 +60,50 @@ export const syncExif = async (ip: string) => {
 
 export const getStatus = (reqIp: string) => {
   const promise = new Promise<IStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/status`).then(res => res.json())
-      .then((res: IStatus) => {
-        // console.log(res);
-        resolve(res);
-      })
-      .catch((err: any) => {
-        console.log('getStatus', err.toString());
-        reject(err);
-      });
+    Promise.race<IStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/status`)
+        .then(res => res.json())
+        .then((res: IStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+    .then((res: IStatus) => {
+      resolve(res);
+    })
+    .catch((err: any) => {
+      reject(err);
+    });
   });
   return promise;
 }
 
 export const getStats = (reqIp: string) => {
   const promise = new Promise<IStats>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/statistics`).then(async res => {
-      const contentType = res.headers.get("content-type");
-      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
-        try {
-          const msgBody = await res.json();
-          if (msgBody.msg) {
-            throw new Error(msgBody.msg);
-          }
-          throw new Error("Bad response from server");
-        } catch (e) {
-          throw e;
-        }
-      } else if (res.status >= 400 && res.status < 600) {
-        throw new Error("Bad response from server");
-      } else {
-        return res.json();
-      }
+    Promise.race<IStats>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/statistics`)
+        .then(res => res.json())
+        .then((res: IStats) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+    .then((res: IStats) => {
+      resolve(res);
     })
-      .then((res: IStats) => {
-        resolve(res);
-      })
-      .catch((err: any) => {
-        console.log('getStats', err.toString());
-        reject(err);
-      });
+    .catch((err: any) => {
+      reject(err);
+    });
   });
   return promise;
 }
@@ -272,32 +277,25 @@ export const sendExifSessionIds = (data: IExifSessionIds) => {
 
 export const getImageCount = (reqIp: string) => {
   const promise = new Promise<IImageCount>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/images_captured`).then(async res => {
-      const contentType = res.headers.get("content-type");
-      if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
-        try {
-          const msgBody = await res.json();
-          if (msgBody.msg) {
-            throw new Error(msgBody.msg);
-          }
-          throw new Error("Bad response from server");
-        } catch (e) {
-          throw e;
-        }
-      } else if (res.status >= 400 && res.status < 600) {
-        throw new Error("Bad response from server");
-      } else {
-        return res.json();
-      }
+    Promise.race<IImageCount>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/images_captured`)
+        .then(res => res.json())
+        .then((res: IImageCount) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+    .then((res: IImageCount) => {
+      resolve(res);
     })
-      .then((res: IImageCount) => {
-        console.log(res);
-        resolve(res);
-      })
-      .catch((err: any) => {
-        console.log('getImageCount', err.toString());
-        reject(err);
-      });
+    .catch((err: any) => {
+      reject(err);
+    });
   });
   return promise;
 }
@@ -402,15 +400,108 @@ export const getLensNumber = (reqIp: string) => {
 }
 
 export const restartService = (reqIp: string) => {
-  const promise = new Promise<IRestart>((resolve, reject) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/restart`).then(res => res.json())
-      .then((res: IRestart) => {
+      .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
         console.log('restartService', err.toString());
         reject(err);
       });
+  });
+  return promise;
+}
+
+export const doPreview = (reqIp: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/do_preview`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('doPreview', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const startCapture = (reqIp: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/start_capture`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('startCapture', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const stopCapture = (reqIp: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/stop_capture`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('stopCapture', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const setCaptureInterval = (reqIp: string, interval: number) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    Promise.race<IReturnStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/capture_interval`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          interval: interval
+        })
+      })
+      .then(async res => {
+        const contentType = res.headers.get("content-type");
+        if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+          try {
+            const msgBody = await res.json();
+            if (msgBody.msg) {
+              throw new Error(msgBody.msg);
+            }
+            throw new Error("Bad response from server");
+          } catch (e) {
+            throw e;
+          }
+        } else if (res.status >= 400 && res.status < 600) {
+          throw new Error("Bad response from server");
+        } else {
+          return res.json();
+        }
+      })
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+    .then((res: IReturnStatus) => {
+      resolve(res);
+    })
+    .catch((err: any) => {
+      reject(err);
+    });
   });
   return promise;
 }

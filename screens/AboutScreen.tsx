@@ -60,21 +60,26 @@ const AboutScreen = ({ route, navigation }: AboutProps) => {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.normal}>
-        <Text style={styles.textBold}>General</Text>
-        <View style={styles.horizontalSpacer}></View>
-        <View style={styles.aboutItems}>
-          <Text style={styles.textNormal}>Software version</Text>
-          <Text style={styles.textNormal}>v{DeviceInfo.getReadableVersion()}</Text>
+        <View style={styles.card}>
+          <View style={styles.normal}>
+            <Text style={styles.textBold}>General</Text>
+            <View style={styles.horizontalSpacer}></View>
+            <View style={styles.aboutItems}>
+              <Text style={styles.textNormal}>Software version</Text>
+              <Text style={styles.textNormal}>v{DeviceInfo.getReadableVersion()}</Text>
+            </View>
+          </View>
         </View>
         <View style={styles.horizontalSpacerThick}></View>
-        {renderHotspotInfo()}
-        {ip === '' ? <View></View> : (
-          <View style={styles.aboutItems}>
-            <Text style={styles.textNormal}>Raspberry pi</Text>
-            <Text style={styles.textNormal}>@{ip}</Text>
-          </View>
-        )}
-        <View style={styles.horizontalSpacerThick}></View>
+        <View style={styles.card}>
+          {renderHotspotInfo()}
+          {ip === '' ? <View></View> : (
+            <View style={styles.aboutItems}>
+              <Text style={styles.textNormal}>Raspberry pi</Text>
+              <Text style={styles.textNormal}>@{ip}</Text>
+            </View>
+          )}
+        </View>
         {/* <View style={{ flexDirection: 'row' }}>
           <MyButton
             title='Reload'
@@ -105,13 +110,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingTop: 5,
-    paddingHorizontal: 5
   },
   normal: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 2,
+    margin: 2
   },
   aboutItems: {
     flexDirection: 'row',
@@ -127,7 +132,8 @@ const styles = StyleSheet.create({
   horizontalSpacerThick: {
     backgroundColor: '#ccc',
     width: '95%',
-    height: 2
+    height: 2,
+    marginVertical: 5
   },
   textNormal: {
     color: 'black'
@@ -135,7 +141,18 @@ const styles = StyleSheet.create({
   textBold: {
     color: 'black',
     fontWeight: 'bold'
-  }
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+    padding: 4,
+    width: '100%',
+  },
 });
 
 export default AboutScreen;

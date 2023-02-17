@@ -1,4 +1,4 @@
-package com.tricapp;
+package com.tricap;
 
 import com.facebook.react.ReactActivity;
 import com.facebook.react.ReactActivityDelegate;

@@ -11,7 +11,9 @@ import {
   Permission,
   Image,
   Dimensions,
-  Platform
+  Platform,
+  NativeModules,
+  TouchableOpacity
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { HomeProps } from '../navigation/types';
@@ -27,7 +29,8 @@ import {
   IStats,
   IStatus,
   ICopyEta,
-  IRestart
+  IReturnStatus,
+  IGpioCamera
 } from '../network/api_types';
 import MyButton from '../components/MyButton';
 import {
@@ -38,12 +41,24 @@ import {
   getImageCount,
   syncExif,
   getLensNumber,
-  restartService
+  restartService,
+  doPreview,
+  startCapture,
+  stopCapture
 } from '../network/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendCameraErrorSms, sendImageCountSms } from '../network/my_sms';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
+import dgram from 'react-native-udp';
+import { setIp, setIps } from '../store/actions/WifiActions';
+import { getStoredIps } from '../network/async_storage';
 
 const AVERAGE_CR2_MB = 26.92;
+const { NetworkScanner } = NativeModules;
+
+const socket = dgram.createSocket('udp4');
+socket.bind(12345);
 
 export let hotspotInfo: IHotspotReturn;
 
@@ -80,17 +95,17 @@ const requestRuntimePermission = async (permission: Permission) => {
 const requestRuntimePermissions = async () => {
   let permissionState = false;
   try {
-    while (!permissionState && (Platform.Version >= 29)) {
-      permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT);
-    }
-    permissionState = false;
-    while (!permissionState && (Platform.Version >= 29)) {
-      permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
-    }
-    permissionState = false;
-    while (!permissionState && (Platform.Version >= 29)) {
-      permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-    }
+    // while (!permissionState && (Platform.Version >= 29)) {
+    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    // }
+    // permissionState = false;
+    // while (!permissionState && (Platform.Version >= 29)) {
+    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
+    // }
+    // permissionState = false;
+    // while (!permissionState && (Platform.Version >= 29)) {
+    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    // }
   } catch (err) {
     console.warn(err);
   }
@@ -98,20 +113,60 @@ const requestRuntimePermissions = async () => {
 
 const renderFixedCols = (item: string | number, key: string) => {
   return (
-    <View style={{ flex: 1, alignItems: 'center' }} key={key}>
-      <Text style={styles.textNormal}>{item}</Text>
+    <View style={{ flex: 1, alignItems: 'flex-start' }} key={key}>
+      <Text style={styles.textBold}>{item}</Text>
     </View>
+  )
+}
+
+const renderGpioCam = (item: IGpioCamera, key: string) => {
+  return (
+    <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.status.mode}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.imageCount.imageCount}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.status.gps ? 'Yes' : 'No'}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} 
+        disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')} 
+        onPress={() => {
+          if (item.status?.mode === 'STARTED') {
+            Toast.show('Stop capturing...');
+            stopCapture(item.ip)
+              .then(res => {
+                const resultString = res.success ? "Stopped" : "Already stopped";
+                // Toast.show(resultString)
+              })
+              .catch((err) => Toast.show(err.toString()));
+          } else {
+            Toast.show('Start capturing...');
+            startCapture(item.ip)
+              .then(res => {
+                const resultString = res.success ? "Started" : "Already started";
+                // Toast.show(resultString)
+              })
+              .catch((err) => Toast.show(err.toString()));
+          }
+        }}>
+          {item.status?.mode === 'STARTED' ?
+            <IconCom name="camera-off" size={25} color={'black'} /> :
+            <Icon name="camera-alt" size={25} color={'black'} />}
+        </TouchableOpacity>
+      </View>
+    </View>
+
   )
 }
 
 const Homescreen = ({ route, navigation }: HomeProps) => {
   const dispatch = useDispatch();
 
-  const isEnabled = useSelector((state: RootState) => state.bt.enabled);
-  const isConnected = useSelector((state: RootState) => state.bt.connected);
-  const ip = useSelector((state: RootState) => state.bt.ip);
-  const noResponse = useSelector((state: RootState) => state.bt.noResponse);
-  const wifiDone = useSelector((state: RootState) => state.bt.wifiDone);
+  const ips = useSelector((state: RootState) => state.wifi.ips);
 
   const [refreshing, setRefreshing] = useState(false);
   const [starting, setStarting] = useState(true);
@@ -127,16 +182,23 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [samplePeriodS, setSamplePeriodS] = useState(0);
   const [lensNumber, setLensNumber] = useState('');
 
+  const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
+
   useEffect(() => {
+    setStarting(true);
     requestRuntimePermissions().then(() => {
-      dispatch(connect());
-      Toast.show('Setting up connection...', Toast.SHORT);
-      doHotspot().then(res => {
-        hotspotInfo = res;
+      getStoredIps().then((storedIps) => {
+        if (storedIps !== undefined && storedIps.length > 0) {
+          dispatch(setIps(storedIps));
+        }
+      }).catch((e) => console.log(e));
+      socket.on('message', function (msg: any[], rinfo: any) {
+        const ip = msg.toString();
+        if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip)) {
+          dispatch(setIp(ip));
+        }
       })
-        .catch(e => console.log(e));
-      wait(500).then(() => { setStarting(false) });
-      wait(15000).then(() => { setBtConnecting(false) });
+
     }).catch((err) => console.log(err));
 
     return () => {
@@ -150,69 +212,32 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
     }
   }, []);
 
-  // useEffect(() => {
-  //   if (!btConnecting && !isConnected) {
-  //     // BT connection failed -> pi not connected -> sync exif from local storage
-  //     syncExif(ip)
-  //       .then(() => Toast.show('Sync successful'))
-  //       .catch((err) => Toast.show(err));
-  //   }
-  // }, [btConnecting, isConnected]);
+  useEffect(() => {
+    console.log('on ips changed', ips);
+    clearInterval(getStatusInterval);
+
+    buildNetwork(ips).then((gpioCamsDetected) => {
+      setGpioCams(gpioCamsDetected);
+    }).catch((e) => console.log(e));
+
+    getStatusInterval = setInterval(() => {
+      buildNetwork(ips).then((gpioCamsDetected) => {
+        setGpioCams(gpioCamsDetected);
+      }).catch((e) => console.log(e));
+    }, 2000);
+
+    if (ips.length > 0) {
+      AsyncStorage.setItem('@Tricap:ips', JSON.stringify(ips)).then(() => { }).catch(e => console.log(e));
+    }
+  }, [ips]);
 
   useEffect(() => {
-    if (isEnabled && isConnected) {
-      console.log('Bluetooth connected');
-      setBtConnecting(false);
-      if (ip === '') {
-        Toast.show('Bluetooth connected. Waiting for IP address...', Toast.LONG);
-        if (hotspotInfo && hotspotInfo.SSID && hotspotInfo.password) {
-          // pi needs to get SSID and password
-          wifiSetupBusy = true;
-          dispatch(wifiSetup(hotspotInfo.SSID, hotspotInfo.password));
-        } else if (hotspotInfo) {
-          // pi will connect to fixed ssid and password
-          dispatch(getIpAddress());
-        } else {
-          // No hotspot info -> wait for hotspot info and send over BT
-          clearInterval(hotspotSendInfoInterval);
-          hotspotSendInfoInterval = setInterval(() => {
-            if (hotspotInfo) {
-              clearInterval(hotspotSendInfoInterval);
-              if (hotspotInfo.SSID && hotspotInfo.password) {
-                wifiSetupBusy = true;
-                dispatch(wifiSetup(hotspotInfo.SSID, hotspotInfo.password));
-              } else {
-                dispatch(getIpAddress());
-              }
-            }
-          }, 1000);
-        }
-      }
+    if (gpioCams.length > 0) {
+      setStarting(false);
+    } else {
+      setStarting(true);
     }
-  }, [isConnected, isEnabled, hotspotInfo]);
-
-  useEffect(() => {
-    if (ip === "") {
-      return;
-    }
-    Toast.show(`Device on ${ip}`, Toast.SHORT);
-    setBtConnecting(false);
-    getData(ip);
-    AsyncStorage.setItem('@Tricap:ip', ip).then(() => { }).catch(e => console.log(e));
-  }, [ip]);
-
-  useEffect(() => {
-    console.log('wifiDone', wifiSetupBusy);
-    if (wifiSetupBusy) {
-      wifiSetupBusy = false;
-      Toast.show('Wi-Fi configured. Waiting for the device\'s IP address...', Toast.LONG);
-      clearTimeout(getIpTimeout);
-      getIpTimeout = setTimeout(() => {
-        // allow time for multiple responses to come back
-        dispatch(getIpAddress());
-      }, 5000);
-    }
-  }, [wifiDone]);
+  }, [gpioCams.length]);
 
   useEffect(() => {
     if (piStatus?.camError) {
@@ -282,17 +307,53 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
     }
   }
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    getData(ip);
-    wait(5000).then(() => setRefreshing(false));
-  }, [ip]);
+  const buildNetwork = async (ips: string[]) => {
+    const newGpioCams: IGpioCamera[] = []; // make copy
+    for (const ip of ips) {
+      try {
+        const status = await getStatus(ip);
+        const imagesCaptured = await getImageCount(ip);
+
+        newGpioCams.push({
+          ip: ip,
+          status: status,
+          imageCount: imagesCaptured,
+        });
+      } catch (e) {
+        newGpioCams.push({
+          ip: ip,
+          status: {
+            mode: "OFFLINE",
+            cams: [],
+            camError: false,
+            gps: false,
+          },
+          imageCount: {
+            imageCount: []
+          },
+        });
+        console.log(e);
+      }
+    }
+
+    return newGpioCams;
+  }
 
   if (starting) {
     return (
       <SafeAreaView style={styles.screen}>
-        <View style={styles.normal}>
-          <ActivityIndicator size="small" color='black' />
+        <View style={styles.screenView}>
+          <View style={{ ...styles.card, alignItems: 'center', justifyContent: 'center', }}>
+            <Text style={styles.textNormal}>Detecting devices on the network...</Text>
+            <ActivityIndicator size="small" color='black' />
+          </View>
+        </View>
+        <View style={styles.screenView}>
+          <View style={{ ...styles.card, alignItems: 'center', justifyContent: 'center', }}>
+            <Text style={styles.textNormal}>Please ensure your hotspot is started with:</Text>
+            <Text style={styles.textNormal}>SSID: ESS-ops</Text>
+            <Text style={styles.textNormal}>Password: dumbo2017</Text>
+          </View>
         </View>
       </SafeAreaView>
     )
@@ -300,117 +361,47 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <Text style={{ ...styles.textBold, fontSize: 24, paddingTop: 5 }}>{piStatus?.mode}</Text>
-      {(!isEnabled || !isConnected) && !btConnecting && ip === '' ? (
-        <View style={styles.connectionStatus}>
-          <Text style={{ color: 'black', padding: 2, fontWeight: 'bold' }}>Bluetooth not connected</Text>
-        </View>
-      ) : (<View></View>)}
-      {isConnected && noResponse ? (
-        <View style={styles.connectionStatus}>
-          <Text style={{ color: 'black', padding: 2, fontWeight: 'bold' }}>Bluetooth not responding</Text>
-        </View>
-      ) : (<View></View>)}
-      {piStatus && piStatus.progress && piStatus.mode === 'STARTED' ? (
-        <View style={styles.copyStatus}>
-          <Text style={styles.textNormal}>Progress: {piStatus.progress.copied.map((item, index) => <Text key={index.toString()}>[{item}]</Text>)} / {piStatus.progress.captured.map((item, index) => <Text key={index.toString()}>[{item}]</Text>)}</Text>
-          {piStatus.progress.percentage === 1 ?
-            <Text style={styles.textNormal}>Deleting...</Text> :
-            <Text style={styles.textNormal}>Time remaining: {piStatus.progress.timeRemaining} ({(piStatus.progress.percentage * 100).toFixed(0)}%) {piStatus.progress.exceptions?.filter(item => item > 0).length > 0 ? `Copy exceptions: ${piStatus.progress.exceptions.reduce((a, b) => a + b)}` : ''}</Text>}
-        </View>
-      ) : <View></View>}
-      {piStatus && piStatus.camError && piStatus.cams ? (
-        <View style={styles.connectionStatus}>
-          <View style={{ flexDirection: 'row' }}>
-            {piStatus.cams.map((item, index) => (
-              renderFixedCols(item, index.toString())
-            ))}
-          </View>
-        </View>
-      ) : <View></View>}
-      {ip === '' && (isConnected || btConnecting) ? (
-        <View style={styles.normal}>
-          <Text style={styles.textNormal}>This may take a few seconds</Text>
-          <ActivityIndicator size="small" color='black' />
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.screenView}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh} />
-          }
-          scrollEnabled={false}>
-          <View style={styles.estimation}>
-            <Text style={styles.textBold}>Cameras</Text>
-            <Text style={styles.textBold}>Approx. {cameraTime} left</Text>
-          </View>
-          <View style={styles.horizontalSpacerThick}></View>
-          <View style={{ flexDirection: 'row' }}>
-            {['SN', 'Used [GB]', 'Free [GB]', 'Capacity [GB]'].map((item, index) => (
-              renderFixedCols(item, index.toString())
-            ))}
-          </View>
-          <View style={styles.horizontalSpacer}></View>
-          {camStats === undefined ? <View></View> : (
-            camStats.map((cam, index) => (
-              <View style={{ flexDirection: 'row' }} key={index.toString()}>
-                {[cam.id, cam.usedGB, cam.freeGB, cam.capacityGB].map((item, index) => (
-                  renderFixedCols(item, index.toString())
-                ))}
-              </View>
-            ))
-          )}
-          <View style={{ height: 10 }}></View>
-          <View style={styles.estimation}>
-            <Text style={styles.textBold}>External storage</Text>
-            <Text style={styles.textBold}>Approx. {externalTime} left</Text>
-          </View>
-          <View style={styles.horizontalSpacerThick}></View>
-          <View style={{ flexDirection: 'row' }}>
-            {['Used [GB]', 'Free [GB]', 'Capacity [GB]'].map((item, index) => (
-              renderFixedCols(item, index.toString())
-            ))}
-          </View>
-          <View style={styles.horizontalSpacer}></View>
-          {externalStats === undefined ? <View></View> : (
-            <View style={{ flexDirection: 'row' }}>
-              {[externalStats.usedGB, externalStats.freeGB, externalStats.capacityGB].map((item, index) => (
+      <View style={styles.screenView}>
+        {gpioCams.length === 0 ? <View></View> : (
+          <View style={styles.card}>
+            <View style={{ flexDirection: 'row', padding: 5 }}>
+              {["Status", "Count", "GPS", ""].map((item, index) => (
                 renderFixedCols(item, index.toString())
               ))}
             </View>
-          )}
-          <View style={{ height: 10 }}></View>
-          <View style={styles.estimation}>
-            <Text style={styles.textBold}>Total</Text>
-            <Text style={styles.textBold}>Approx. {totalTime} left</Text>
+            <View style={styles.horizontalSpacer}></View>
+            {gpioCams.map((item, index) => (
+              renderGpioCam(item, index.toString())
+            ))}
+          </View>)}
+        <View style={styles.horizontalSpacerThick}></View>
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', width: '95%', justifyContent: 'space-evenly' }}>
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+              Toast.show('Start capturing...');
+              for (const gpioCam of gpioCams) {
+                startCapture(gpioCam.ip).then(() => console.log('start req', gpioCam.ip)).catch((e) => console.log(e));
+              }
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="camera-alt" size={30} color={'black'} />
+                <Text style={styles.textNormal}>Start all</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+              Toast.show('Stop capturing...');
+              for (const gpioCam of gpioCams) {
+                stopCapture(gpioCam.ip).then(() => console.log('stop req', gpioCam.ip)).catch((e) => console.log(e));
+              }
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <IconCom name="camera-off" size={30} color={'black'} />
+                <Text style={styles.textNormal}>Stop all</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-          <View style={styles.horizontalSpacerThick}></View>
-          <View style={{ height: 10 }}></View>
-          <View style={styles.estimation}>
-            <Text style={styles.textBold}>GPS status</Text>
-            <Text style={styles.textBold}>{piStatus?.gps ? "Connected" : "Not connected"}</Text>
-          </View>
-          {/* <View style={{ height: 10 }}></View>
-            <View style={styles.estimation}>
-              <Text style={styles.textBold}>Battery</Text>
-              <Text style={styles.textBold}>{batteryStats.toFixed(0)}%</Text>
-            </View>
-            <View style={styles.horizontalSpacerThick}></View> */}
-          {/* <View style={{ height: 10 }}></View>
-            <View style={styles.estimation}>
-              <Text style={styles.textBold}>Capture interval</Text>
-              <Text style={styles.textBold}>{samplePeriodS}s</Text>
-            </View>
-            <View style={styles.horizontalSpacerThick}></View> */}
-          <View style={styles.horizontalSpacerThick}></View>
-          <View style={{ paddingTop: 10 }}>
-            <Image source={require('../assets/RigSetup.png')} style={{ resizeMode: 'contain', width: Dimensions.get('window').width * 0.95, height: Dimensions.get('window').height / 2.5 }} />
-          </View>
-        </ScrollView>
-      )
-      }
+        </View>
+      </View>
     </SafeAreaView >
   )
 }
@@ -419,13 +410,14 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start'
+    justifyContent: 'flex-start',
   },
   screenView: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    padding: 2
+    padding: 2,
+    margin: 2
   },
   connectionStatus: {
     width: '100%',
@@ -437,16 +429,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'cyan',
     alignItems: 'center',
   },
-  normal: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
   horizontalSpacerThick: {
     backgroundColor: '#ccc',
     width: '95%',
-    height: 2
+    height: 2,
+    marginVertical: 5
   },
   horizontalSpacer: {
     backgroundColor: '#ccc',
@@ -466,12 +453,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around'
   },
   textNormal: {
-    color: 'black'
+    color: 'black',
+    flexWrap: 'wrap'
   },
   textBold: {
     color: 'black',
-    fontWeight: 'bold'
-  }
+    fontWeight: 'bold',
+    flexWrap: 'wrap'
+  },
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+    padding: 4,
+    width: '100%',
+  },
 });
 
 export default Homescreen;

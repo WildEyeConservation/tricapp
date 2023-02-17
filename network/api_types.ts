@@ -39,7 +39,7 @@ export interface ILensNumber {
   lens: string;
 }
 
-export interface IRestart {
+export interface IReturnStatus {
   success: boolean;
 }
 
@@ -88,4 +88,15 @@ export interface IExifSessionIds {
 
 export interface IImageCount {
   imageCount: number[];
+}
+
+export interface IGpioCamera {
+  ip: string;
+  status: IStatus;
+  imageCount: IImageCount;
+}
+
+export interface IGpioCameraSettings {
+  ip: string;
+  captureInterval: number;
 }

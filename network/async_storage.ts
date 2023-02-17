@@ -81,3 +81,29 @@ export const getStoredExifSessionIds = async () => {
   }
   return undefined;
 }
+
+export const getStoredIps = async () => {
+  try {
+    const value = await AsyncStorage.getItem('@Tricap:ips');
+    if (value !== null && value !== '') {
+      const storedIps: string[] | undefined = JSON.parse(value);
+      return storedIps;
+    }
+  } catch (e) {
+    console.log(`Read ips failed ${e}`);
+  }
+  return undefined;
+}
+
+export const getCaptureInterval = async () => {
+  try {
+    const value = await AsyncStorage.getItem('@Tricap:captureInterval');
+    if (value !== null && value !== '') {
+      const storedInterval: string | undefined = value;
+      return storedInterval;
+    }
+  } catch (e) {
+    console.log(`Read capture interval failed ${e}`);
+  }
+  return undefined;
+}

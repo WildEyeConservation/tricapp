@@ -1,4 +1,4 @@
-package com.tricapp.newarchitecture.modules;
+package com.tricap.newarchitecture.modules;
 
 import com.facebook.jni.HybridData;
 import com.facebook.react.ReactPackage;
