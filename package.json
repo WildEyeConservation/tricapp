@@ -40,6 +40,8 @@
   "devDependencies": {
     "@babel/core": "^7.19.0",
     "@babel/runtime": "^7.19.0",
+    "@react-native-community/cli": "^9.3.5",
+    "@react-native-community/cli-platform-android": "^9.3.4",
     "@react-native-community/eslint-config": "^2.0.0",
     "@tsconfig/react-native": "^2.0.2",
     "@types/jest": "^26.0.24",
