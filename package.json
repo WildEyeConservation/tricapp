@@ -24,6 +24,7 @@
     "protobufjs": "^7.1.0",
     "react": "^18.1.0",
     "react-native": "^0.70.0",
+    "react-native-blob-util": "^0.17.0",
     "react-native-bluetooth-serial": "^1.0.0-rc1",
     "react-native-device-info": "^10.0.2",
     "react-native-get-sms-android": "^2.1.0",

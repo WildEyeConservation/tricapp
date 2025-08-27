@@ -13,6 +13,7 @@ import {
 } from './api_types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-simple-toast';
+import RNBlobUtil from 'react-native-blob-util';
 
 // const SERVER_IP = 'https://79dcc177-303f-496b-b6ee-c818b70db5f8.mock.pstmn.io';
 // const SERVER_IP = 'https://elephants.hopto.org:443';
@@ -504,4 +505,85 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
     });
   });
   return promise;
+}
+
+export async function downloadLogs(reqIp: string) {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  const filename = `tricap_master_${timestamp}.log`;
+  const target = `/storage/emulated/0/Download/${filename}`;
+
+  // Overwrite any previous file; no resume
+  const task = RNBlobUtil
+    .config({ path: target, fileCache: true, overwrite: true })
+    .fetch('GET', `http://${reqIp}:5000/api/download_logs`)
+    .progress({ count: 10 }, (received, total) => {
+      if (total > 0) {
+        console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+      } else {
+        console.log(`Received: ${received} bytes`);
+      }
+    });
+
+  const res = await task;
+  console.log('Saved to:', res.path(), 'status:', res.info().status);
+  return res.path();
+
+  // const url = `http://${reqIp}:5000/api/download_logs`;
+
+  // // Ask server for ~1 MiB so we can see progress without huge memory usage
+  // const headers: Record<string, string> = { Range: 'bytes=0-1048575' };
+
+  // const res = await RNBlobUtil
+  //   .config({ fileCache: false })          // don't write to disk
+  //   .fetch('GET', url, headers)
+  //   .progress({ count: 10 }, (received, total) => {
+  //     if (total > 0) {
+  //       console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+  //     } else {
+  //       console.log(`Received: ${received} bytes`);
+  //     }
+  //   });
+
+  // // Optional: peek at body (careful—this is in memory)
+  // const snippet = (await res.text()).slice(0, 300);
+  // console.log('First 300 chars:\n', snippet);
+
+  // const { dirs } = RNBlobUtil.fs;
+  // const target = `${dirs.DownloadDir}/${'tricap_master.log'}`;
+
+  // // Progress callback (optional)
+  // const progressConfig = { count: 10 }; // update ~10 times
+  // RNBlobUtil.config({
+  //   addAndroidDownloads: {
+  //     useDownloadManager: true,
+  //     notification: true,
+  //     title: 'tricap_master.log',
+  //     description: 'Downloading logs…',
+  //     // Save to public Downloads:
+  //     path: target,
+  //     mime: 'text/plain',
+  //     mediaScannable: true,
+  //   },
+  // })
+  //   .fetch(
+  //     'GET',
+  //     `http://${reqIp}:5000/api/download_logs`,
+  //   )
+  //   .progress(progressConfig, (received, total) => {
+  //     if (total > 0) {
+  //       const pct = ((received / total) * 100).toFixed(1);
+  //       console.log(`Progress: ${pct}%`);
+  //     } else {
+  //       console.log(`Received: ${received} bytes`);
+  //     }
+  //   })
+  //   .then(res => {
+  //     console.log('Saved to:', res.path());
+  //   })
+  //   .catch(err => {
+  //     console.error('Download failed:', err);
+  //   });
 }

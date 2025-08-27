@@ -20,7 +20,7 @@ import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
-import { restartService, getStats, setCaptureInterval } from '../network/api';
+import { restartService, getStats, setCaptureInterval, downloadLogs } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings } from '../network/api_types';
 import { setIps } from '../store/actions/WifiActions';
@@ -173,12 +173,21 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             </View>
             <View style={styles.horizontalSpacer}></View>
             {gpioCams.map((item, index: number) => (
-              renderSettings(item, index.toString(), (ret) => {
-                Toast.show('Removing...');
+              renderSettings(item, index.toString(), async (ret) => {
+                // Toast.show('Removing...');
+                // const filteredIps = ips.filter((ip: string) => ip !== ret);
+                // console.log('filteredIps', filteredIps);
+                // AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
+                // dispatch(setIps(filteredIps));
+                Toast.show('Downloading...');
                 const filteredIps = ips.filter((ip: string) => ip !== ret);
                 console.log('filteredIps', filteredIps);
-                AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
-                dispatch(setIps(filteredIps));
+                // AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
+                try {
+                  await downloadLogs(item.ip)
+                } catch {
+                  console.log('downloadLogs failed')
+                }
               })
             ))}
           </View>)}
