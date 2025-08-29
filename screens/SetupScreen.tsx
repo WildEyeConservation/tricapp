@@ -263,9 +263,19 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
         <View style={styles.horizontalSpacer}></View>
         {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>Status:</Text>
-            <Text style={styles.textNormal}>Wi-Fi: {piStatus?.wifiSignal}dBm</Text>
-            <Text style={styles.textNormal}>Status:</Text>
+            <Text style={styles.textNormal}>Wi-Fi:</Text>
+            <Text style={styles.textNormal}>{piStatus ? piStatus.wifiSignal : 0}dBm</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>GPS Status:</Text>
+            <Text style={styles.textNormal}>Satellites: {piStatus?.gps.satellites ? piStatus.gps.satellites : 0}</Text>
+            <Text style={styles.textNormal}>PDOP: {piStatus?.gps.pdop ? piStatus.gps.pdop : 0}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>GPS SNR:</Text>
+            <Text style={styles.textNormal}>Min: {piStatus?.gps.min ? piStatus.gps.min : 0}</Text>
+            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? piStatus.gps.avg : 0}</Text>
+            <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
           </View>
         </View>}
         {gpioCams.length > 0 && <View style={styles.card}>

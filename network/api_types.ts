@@ -27,12 +27,21 @@ export interface ICopyEta {
   copied: number[];
 }
 
+export interface IGpsStatus {
+  fix: boolean;
+  satellites: number;
+  pdop: number;
+  max: number;
+  min: number;
+  avg: number;
+}
+
 export interface IStatus {
   mode: string;
   cams: string[];
   camError: boolean;
   progress?: ICopyEta;
-  gps: boolean;
+  gps: IGpsStatus;
   wifiSignal: number;
 }
 
