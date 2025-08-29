@@ -20,16 +20,22 @@ import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
-import { restartService, getStats, setCaptureInterval, downloadLogs } from '../network/api';
+import { restartService, getStats, setCaptureInterval, downloadLogs, getStatus } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
-import { IGpioCamera, IGpioCameraSettings } from '../network/api_types';
+import { IGpioCamera, IGpioCameraSettings, IStatus } from '../network/api_types';
 import { setIps } from '../store/actions/WifiActions';
 
 interface IRemove {
   (ip: string): void;
 }
 
+interface ISetDevice {
+  (ip: string): void;
+}
+
 export let phoneNr = '';
+
+let getStatusInterval: ReturnType<typeof setInterval>;
 
 const renderFixedCols = (item: string | number, key: string) => {
   return (
@@ -39,30 +45,25 @@ const renderFixedCols = (item: string | number, key: string) => {
   )
 }
 
-const renderSettings = (item: IGpioCameraSettings, key: string, callback: IRemove) => {
+const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IRemove, selectDevice: ISetDevice, selectedIdx: number) => {
   return (
-    <View style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key}>
+    <TouchableOpacity style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key} onPress={() => {
+      console.log('select', item.ip);
+      selectDevice(item.ip);
+    }}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.textNormal}>{item.ip}</Text>
+        <Text style={key === selectedIdx.toString() ? styles.textBold : styles.textNormal}>{item.ip}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.textNormal}>{item.captureInterval}s</Text>
       </View>
-      <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row' }}>
-        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={item.captureInterval === 0} onPress={() => {
-          Toast.show('Restarting...');
-          restartService(item.ip).then((res) => { }).catch((e) => console.log(e));
-        }}>
-          <IconCom name="restart" size={30} color={'black'} />
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
-          console.log('do remove');
-          callback(item.ip);
-        }}>
-          <Icon name="delete" size={30} color={'black'} />
-        </TouchableOpacity>
-      </View>
-    </View>
+      <TouchableOpacity style={{ flex: 1, alignItems: 'flex-end' }} onPress={() => {
+        console.log('do remove');
+        removeDevice(item.ip);
+      }}>
+        <Icon name="delete" size={30} color={'black'} />
+      </TouchableOpacity>
+    </TouchableOpacity >
   )
 }
 
@@ -73,6 +74,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
 
   const [gpioCams, setGpioCams] = useState<IGpioCameraSettings[]>([]);
   const [newCaptureInterval, setNewCaptureInterval] = useState<number>(3.0);
+  const [selectedIdx, setSelectedIdx] = useState<number>(0);
+  const [piStatus, setPiStatus] = useState<IStatus>();
 
   useEffect(() => {
     navigation.setOptions({
@@ -105,6 +108,17 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   }, []);
 
   useEffect(() => {
+    clearInterval(getStatusInterval);
+    getStatusInterval = setInterval(() => {
+      if (selectedIdx < gpioCams.length) {
+        getStatus(gpioCams[selectedIdx].ip).then((retStatus) => {
+          setPiStatus(retStatus);
+        }).catch((e) => console.log(e));
+      }
+    }, 5000);
+  }, [selectedIdx, gpioCams]);
+
+  useEffect(() => {
     buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
   }, [ips]);
 
@@ -114,10 +128,13 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
       try {
         const stats = await getStats(ip);
 
+
         newGpioCams.push({
           ip: ip,
           captureInterval: stats.captureInterval,
         });
+
+        setPiStatus
       } catch (e) {
         newGpioCams.push({
           ip: ip,
@@ -125,7 +142,6 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
         });
       }
     }
-
     return newGpioCams;
   }
 
@@ -173,22 +189,14 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             </View>
             <View style={styles.horizontalSpacer}></View>
             {gpioCams.map((item, index: number) => (
-              renderSettings(item, index.toString(), async (ret) => {
-                // Toast.show('Removing...');
-                // const filteredIps = ips.filter((ip: string) => ip !== ret);
-                // console.log('filteredIps', filteredIps);
-                // AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
-                // dispatch(setIps(filteredIps));
-                Toast.show('Downloading...');
+              renderSettings(item, index.toString(), (ret) => {
+                Toast.show('Removing...');
                 const filteredIps = ips.filter((ip: string) => ip !== ret);
                 console.log('filteredIps', filteredIps);
-                // AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
-                try {
-                  await downloadLogs(item.ip)
-                } catch {
-                  console.log('downloadLogs failed')
-                }
-              })
+                AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
+              },
+                () => { setSelectedIdx(index); },
+                selectedIdx)
             ))}
           </View>)}
         <View style={styles.horizontalSpacerThick}></View>
@@ -226,6 +234,62 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
           </View>
         </View>
+        <View style={styles.horizontalSpacer}></View>
+        {selectedIdx < gpioCams.length && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Upload logs:</Text>
+            <MyButton
+              title='Master'
+              width={100}
+              onPress={async () => {
+                Toast.show('Uploading...');
+                try {
+                  await downloadLogs(gpioCams[selectedIdx].ip)
+                  Toast.show('Upload complete');
+                } catch {
+                  console.log('upload logs failed')
+                }
+              }}
+            ></MyButton>
+            <MyButton
+              title='IMU'
+              width={100}
+              onPress={async () => {
+                console.log('TODO')
+              }}
+            ></MyButton>
+          </View>
+        </View>}
+        <View style={styles.horizontalSpacer}></View>
+        {gpioCams.length > 0 && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Status:</Text>
+            <Text style={styles.textNormal}>Wi-Fi: {piStatus?.wifiSignal}dBm</Text>
+            <Text style={styles.textNormal}>Status:</Text>
+          </View>
+        </View>}
+        {gpioCams.length > 0 && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={gpioCams[selectedIdx].captureInterval === 0} onPress={() => {
+              Toast.show('Restarting...');
+              restartService(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+            }}>
+              <IconCom name="restart-alert" size={30} color={'black'} />
+            </TouchableOpacity>
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={async () => {
+              console.log('do upload logs');
+              Toast.show('Uploading...');
+              try {
+                await downloadLogs(gpioCams[selectedIdx].ip)
+                Toast.show('Upload complete');
+              } catch {
+                console.log('upload logs failed')
+              }
+            }}>
+              <IconCom name="upload" size={30} color={'black'} />
+            </TouchableOpacity>
+          </View>
+        </View>}
       </View>
     </SafeAreaView >
   )

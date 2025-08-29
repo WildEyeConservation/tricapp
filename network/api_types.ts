@@ -33,6 +33,7 @@ export interface IStatus {
   camError: boolean;
   progress?: ICopyEta;
   gps: boolean;
+  wifiSignal: number;
 }
 
 export interface ILensNumber {
