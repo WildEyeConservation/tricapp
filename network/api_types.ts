@@ -34,6 +34,7 @@ export interface IGpsStatus {
   max: number;
   min: number;
   avg: number;
+  lastUpdate: number;
 }
 
 export interface IStatus {

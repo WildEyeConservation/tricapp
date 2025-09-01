@@ -20,7 +20,13 @@ import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
-import { restartService, getStats, setCaptureInterval, downloadLogs, getStatus } from '../network/api';
+import { restartService, 
+  getStats, 
+  setCaptureInterval, 
+  downloadLogs, 
+  getStatus, 
+  rebootPi,
+  downloadImuLogs } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings, IStatus } from '../network/api_types';
 import { setIps } from '../store/actions/WifiActions';
@@ -76,6 +82,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   const [newCaptureInterval, setNewCaptureInterval] = useState<number>(3.0);
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [piStatus, setPiStatus] = useState<IStatus>();
+  const [lastGpsUpdate, setLastGpsUpdate] = useState<number>(0);
 
   useEffect(() => {
     navigation.setOptions({
@@ -113,7 +120,14 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
       if (selectedIdx < gpioCams.length) {
         getStatus(gpioCams[selectedIdx].ip).then((retStatus) => {
           setPiStatus(retStatus);
-        }).catch((e) => console.log(e));
+          if (retStatus.gps.lastUpdate !== undefined) {
+            if (retStatus.gps.lastUpdate > 0) {
+              setLastGpsUpdate(Math.min(retStatus.gps.lastUpdate, 999))
+            } else {
+              setLastGpsUpdate(999)
+            }
+          }
+        }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 5, 999)) });
       }
     }, 5000);
   }, [selectedIdx, gpioCams]);
@@ -200,6 +214,25 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ))}
           </View>)}
         <View style={styles.horizontalSpacerThick}></View>
+        {gpioCams.length > 0 && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Wi-Fi:</Text>
+            <Text style={styles.textNormal}>{piStatus ? piStatus.wifiSignal : 0}dBm</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>GPS:</Text>
+            <Text style={styles.textNormal}>Satellites: {piStatus?.gps.satellites ? piStatus.gps.satellites : 0}</Text>
+            <Text style={styles.textNormal}>PDOP: {piStatus?.gps.pdop ? piStatus.gps.pdop : 0}</Text>
+            <Text style={styles.textNormal}>{lastGpsUpdate.toFixed(1)}s ago</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Satellites SNR:</Text>
+            <Text style={styles.textNormal}>Min: {piStatus?.gps.min ? piStatus.gps.min : 0}</Text>
+            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? piStatus.gps.avg : 0}</Text>
+            <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
+          </View>
+        </View>}
+        <View style={styles.horizontalSpacerWithMargin}></View>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Set interval:</Text>
@@ -234,20 +267,20 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
           </View>
         </View>
-        <View style={styles.horizontalSpacer}></View>
+        <View style={styles.horizontalSpacerWithMargin}></View>
         {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>Upload logs:</Text>
+            <Text style={styles.textNormal}>Download logs:</Text>
             <MyButton
-              title='Master'
+              title='Main'
               width={100}
               onPress={async () => {
-                Toast.show('Uploading...');
+                Toast.show('Downloading...');
                 try {
                   await downloadLogs(gpioCams[selectedIdx].ip)
-                  Toast.show('Upload complete');
+                  Toast.show('Download complete');
                 } catch {
-                  console.log('upload logs failed')
+                  console.log('download logs failed')
                 }
               }}
             ></MyButton>
@@ -255,49 +288,37 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               title='IMU'
               width={100}
               onPress={async () => {
-                console.log('TODO')
+                Toast.show('Downloading...');
+                try {
+                  await downloadImuLogs(gpioCams[selectedIdx].ip)
+                  Toast.show('Download complete');
+                } catch {
+                  console.log('download logs failed')
+                }
               }}
             ></MyButton>
           </View>
         </View>}
-        <View style={styles.horizontalSpacer}></View>
+        <View style={styles.horizontalSpacerWithMargin}></View>
         {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>Wi-Fi:</Text>
-            <Text style={styles.textNormal}>{piStatus ? piStatus.wifiSignal : 0}dBm</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>GPS Status:</Text>
-            <Text style={styles.textNormal}>Satellites: {piStatus?.gps.satellites ? piStatus.gps.satellites : 0}</Text>
-            <Text style={styles.textNormal}>PDOP: {piStatus?.gps.pdop ? piStatus.gps.pdop : 0}</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>GPS SNR:</Text>
-            <Text style={styles.textNormal}>Min: {piStatus?.gps.min ? piStatus.gps.min : 0}</Text>
-            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? piStatus.gps.avg : 0}</Text>
-            <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
-          </View>
-        </View>}
-        {gpioCams.length > 0 && <View style={styles.card}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={gpioCams[selectedIdx].captureInterval === 0} onPress={() => {
-              Toast.show('Restarting...');
-              restartService(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
-            }}>
-              <IconCom name="restart-alert" size={30} color={'black'} />
-            </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={async () => {
-              console.log('do upload logs');
-              Toast.show('Uploading...');
-              try {
-                await downloadLogs(gpioCams[selectedIdx].ip)
-                Toast.show('Upload complete');
-              } catch {
-                console.log('upload logs failed')
-              }
-            }}>
-              <IconCom name="upload" size={30} color={'black'} />
-            </TouchableOpacity>
+            <Text style={styles.textNormal}>Restart:</Text>
+            <MyButton
+              title='Tricap service'
+              width={120}
+              onPress={() => {
+                Toast.show('Restarting...');
+                restartService(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+              }}
+            ></MyButton>
+            <MyButton
+              title='Raspberry pi'
+              width={120}
+              onPress={() => {
+                Toast.show('Rebooting...');
+                rebootPi(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+              }}
+            ></MyButton>
           </View>
         </View>}
       </View>
@@ -327,6 +348,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ccc',
     width: '95%',
     height: 1,
+  },
+  horizontalSpacerWithMargin: {
+    backgroundColor: '#ccc',
+    width: '95%',
+    height: 1,
+    marginVertical: 2
   },
   horizontalSpacerThick: {
     backgroundColor: '#ccc',
