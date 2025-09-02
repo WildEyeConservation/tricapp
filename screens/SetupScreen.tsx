@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {useFocusEffect} from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import {
   View,
@@ -20,13 +21,15 @@ import { RootState } from '../store/types';
 import { wait } from '../utils/general';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
-import { restartService, 
-  getStats, 
-  setCaptureInterval, 
-  downloadLogs, 
-  getStatus, 
+import {
+  restartService,
+  getStats,
+  setCaptureInterval,
+  downloadLogs,
+  getStatus,
   rebootPi,
-  downloadImuLogs } from '../network/api';
+  downloadImuLogs
+} from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings, IStatus } from '../network/api_types';
 import { setIps } from '../store/actions/WifiActions';
@@ -96,6 +99,15 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
       ),
     });
   }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        console.log('stop refresh')
+        clearInterval(getStatusInterval);
+      }
+    }, [])
+  );
 
   useEffect(() => {
     getStoredIps().then((storedIps) => {
@@ -226,10 +238,11 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             <Text style={styles.textNormal}>{lastGpsUpdate.toFixed(1)}s ago</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={styles.textNormal}>Satellites SNR:</Text>
-            <Text style={styles.textNormal}>Min: {piStatus?.gps.min ? piStatus.gps.min : 0}</Text>
-            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? piStatus.gps.avg : 0}</Text>
-            <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
+            <Text style={styles.textNormal}>SNR:</Text>
+            {/* Use with negative sign and swap min and max */}
+            <Text style={styles.textNormal}>Min: {piStatus?.gps.max ? -piStatus.gps.max : 0}dBm</Text>
+            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? -piStatus.gps.avg.toFixed(0) : 0}dBm</Text>
+            <Text style={styles.textNormal}>Max: {piStatus?.gps.min ? -piStatus.gps.min : 0}dBm</Text>
           </View>
         </View>}
         <View style={styles.horizontalSpacerWithMargin}></View>

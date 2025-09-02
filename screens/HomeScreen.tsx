@@ -126,33 +126,36 @@ const renderGpioCam = (item: IGpioCamera, key: string) => {
         <Text style={styles.textNormal}>{item.status.mode}</Text>
       </View>
       <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.status.cams.length}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
         <Text style={styles.textNormal}>{item.imageCount.imageCount}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.textNormal}>{item.status.gps ? 'Yes' : 'No'}</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} 
-        disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')} 
-        onPress={() => {
-          if (item.status?.mode === 'STARTED') {
-            Toast.show('Stop capturing...');
-            stopCapture(item.ip)
-              .then(res => {
-                const resultString = res.success ? "Stopped" : "Already stopped";
-                // Toast.show(resultString)
-              })
-              .catch((err) => Toast.show(err.toString()));
-          } else {
-            Toast.show('Start capturing...');
-            startCapture(item.ip)
-              .then(res => {
-                const resultString = res.success ? "Started" : "Already started";
-                // Toast.show(resultString)
-              })
-              .catch((err) => Toast.show(err.toString()));
-          }
-        }}>
+        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }}
+          disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')}
+          onPress={() => {
+            if (item.status?.mode === 'STARTED') {
+              Toast.show('Stop capturing...');
+              stopCapture(item.ip)
+                .then(res => {
+                  const resultString = res.success ? "Stopped" : "Already stopped";
+                  // Toast.show(resultString)
+                })
+                .catch((err) => Toast.show(err.toString()));
+            } else {
+              Toast.show('Start capturing...');
+              startCapture(item.ip)
+                .then(res => {
+                  const resultString = res.success ? "Started" : "Already started";
+                  // Toast.show(resultString)
+                })
+                .catch((err) => Toast.show(err.toString()));
+            }
+          }}>
           {item.status?.mode === 'STARTED' ?
             <IconCom name="camera-off" size={25} color={'black'} /> :
             <Icon name="camera-alt" size={25} color={'black'} />}
@@ -365,7 +368,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         {gpioCams.length === 0 ? <View></View> : (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', padding: 5 }}>
-              {["Status", "Count", "GPS", ""].map((item, index) => (
+              {["Status", "Cameras", "Images", "GPS", ""].map((item, index) => (
                 renderFixedCols(item, index.toString())
               ))}
             </View>
