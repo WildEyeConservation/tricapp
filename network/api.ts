@@ -570,3 +570,28 @@ export async function downloadImuLogs(reqIp: string) {
   console.log('Saved to:', res.path(), 'status:', res.info().status);
   return res.path();
 }
+
+export async function downloadGpsLogs(reqIp: string) {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  const filename = `gpsData_${timestamp}.csv`;
+  const target = `/storage/emulated/0/Download/${filename}`;
+
+  // Overwrite any previous file; no resume
+  const task = RNBlobUtil
+    .config({ path: target, fileCache: true, overwrite: true })
+    .fetch('GET', `http://${reqIp}:5000/api/download_gps_logs`)
+    .progress({ count: 10 }, (received, total) => {
+      if (total > 0) {
+        console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+      } else {
+        console.log(`Received: ${received} bytes`);
+      }
+    });
+
+  const res = await task;
+  console.log('Saved to:', res.path(), 'status:', res.info().status);
+  return res.path();
+}

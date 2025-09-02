@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {useFocusEffect} from '@react-navigation/native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import {
   View,
@@ -28,7 +28,8 @@ import {
   downloadLogs,
   getStatus,
   rebootPi,
-  downloadImuLogs
+  downloadImuLogs,
+  downloadGpsLogs
 } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings, IStatus } from '../network/api_types';
@@ -43,8 +44,6 @@ interface ISetDevice {
 }
 
 export let phoneNr = '';
-
-let getStatusInterval: ReturnType<typeof setInterval>;
 
 const renderFixedCols = (item: string | number, key: string) => {
   return (
@@ -78,6 +77,7 @@ const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IR
 
 const SetupScreen = ({ route, navigation }: SetupProps) => {
   const dispatch = useDispatch();
+  const getStatusInterval = useRef<NodeJS.Timer | null>(null);
 
   const ips = useSelector((state: RootState) => state.wifi.ips);
 
@@ -102,11 +102,34 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
 
   useFocusEffect(
     useCallback(() => {
+      if (getStatusInterval.current) {
+        clearInterval(getStatusInterval.current);
+      }
+
+      const checkStatus = () => {
+        if (selectedIdx < gpioCams.length) {
+          getStatus(gpioCams[selectedIdx].ip).then((retStatus) => {
+            setPiStatus(retStatus);
+            if (retStatus.gps.lastUpdate !== undefined) {
+              if (retStatus.gps.lastUpdate > 0) {
+                setLastGpsUpdate(Math.min(retStatus.gps.lastUpdate, 999))
+              } else {
+                setLastGpsUpdate(999)
+              }
+            }
+          }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 1, 999)) });
+        }
+      };
+
+      checkStatus();
+
+      getStatusInterval.current = setInterval(checkStatus, 1000);
+
       return () => {
         console.log('stop refresh')
-        clearInterval(getStatusInterval);
+        clearInterval(getStatusInterval.current);
       }
-    }, [])
+    }, [selectedIdx, gpioCams])
   );
 
   useEffect(() => {
@@ -125,24 +148,6 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
       }
     });
   }, []);
-
-  useEffect(() => {
-    clearInterval(getStatusInterval);
-    getStatusInterval = setInterval(() => {
-      if (selectedIdx < gpioCams.length) {
-        getStatus(gpioCams[selectedIdx].ip).then((retStatus) => {
-          setPiStatus(retStatus);
-          if (retStatus.gps.lastUpdate !== undefined) {
-            if (retStatus.gps.lastUpdate > 0) {
-              setLastGpsUpdate(Math.min(retStatus.gps.lastUpdate, 999))
-            } else {
-              setLastGpsUpdate(999)
-            }
-          }
-        }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 5, 999)) });
-      }
-    }, 5000);
-  }, [selectedIdx, gpioCams]);
 
   useEffect(() => {
     buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
@@ -286,7 +291,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             <Text style={styles.textNormal}>Download logs:</Text>
             <MyButton
               title='Main'
-              width={100}
+              width={70}
               onPress={async () => {
                 Toast.show('Downloading...');
                 try {
@@ -299,11 +304,24 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
             <MyButton
               title='IMU'
-              width={100}
+              width={70}
               onPress={async () => {
                 Toast.show('Downloading...');
                 try {
                   await downloadImuLogs(gpioCams[selectedIdx].ip)
+                  Toast.show('Download complete');
+                } catch {
+                  console.log('download logs failed')
+                }
+              }}
+            ></MyButton>
+            <MyButton
+              title='GPS'
+              width={70}
+              onPress={async () => {
+                Toast.show('Downloading...');
+                try {
+                  await downloadGpsLogs(gpioCams[selectedIdx].ip)
                   Toast.show('Download complete');
                 } catch {
                   console.log('download logs failed')

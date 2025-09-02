@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -63,7 +64,6 @@ socket.bind(12345);
 export let hotspotInfo: IHotspotReturn;
 
 let hotspotSendInfoInterval: ReturnType<typeof setInterval>;
-let getStatusInterval: ReturnType<typeof setInterval>;
 let getIpTimeout: ReturnType<typeof setTimeout>;
 
 let wifiSetupBusy = false;
@@ -168,6 +168,7 @@ const renderGpioCam = (item: IGpioCamera, key: string) => {
 
 const Homescreen = ({ route, navigation }: HomeProps) => {
   const dispatch = useDispatch();
+  const getStatusInterval = useRef<NodeJS.Timer | null>(null);
 
   const ips = useSelector((state: RootState) => state.wifi.ips);
 
@@ -204,35 +205,45 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
 
     }).catch((err) => console.log(err));
 
+    // dispatch(setIp('192.168.88.84'));
+
     return () => {
       console.log('onClose');
       if (unsubscribe) {
         unsubscribe();
       }
       stopBluetooth();
-      clearInterval(getStatusInterval);
+      clearInterval(getStatusInterval.current);
       clearInterval(hotspotSendInfoInterval);
     }
   }, []);
 
-  useEffect(() => {
-    console.log('on ips changed', ips);
-    clearInterval(getStatusInterval);
+  useFocusEffect(
+    useCallback(() => {
+      if (getStatusInterval.current) {
+        clearInterval(getStatusInterval.current);
+      }
 
-    buildNetwork(ips).then((gpioCamsDetected) => {
-      setGpioCams(gpioCamsDetected);
-    }).catch((e) => console.log(e));
-
-    getStatusInterval = setInterval(() => {
       buildNetwork(ips).then((gpioCamsDetected) => {
         setGpioCams(gpioCamsDetected);
       }).catch((e) => console.log(e));
-    }, 2000);
 
-    if (ips.length > 0) {
-      AsyncStorage.setItem('@Tricap:ips', JSON.stringify(ips)).then(() => { }).catch(e => console.log(e));
-    }
-  }, [ips]);
+      getStatusInterval.current = setInterval(() => {
+        buildNetwork(ips).then((gpioCamsDetected) => {
+          setGpioCams(gpioCamsDetected);
+        }).catch((e) => console.log(e));
+      }, 2000);
+
+      if (ips.length > 0) {
+        AsyncStorage.setItem('@Tricap:ips', JSON.stringify(ips)).then(() => { }).catch(e => console.log(e));
+      }
+
+      return () => {
+        console.log('stop refresh')
+        clearInterval(getStatusInterval.current);
+      }
+    }, [ips])
+  );
 
   useEffect(() => {
     if (gpioCams.length > 0) {
@@ -299,8 +310,8 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         .then((res) => Toast.show(res))
         .catch((e) => Toast.show(e.toString(), Toast.LONG));
       setRefreshing(false);
-      clearInterval(getStatusInterval);
-      getStatusInterval = setInterval(() => {
+      clearInterval(getStatusInterval.current);
+      getStatusInterval.current = setInterval(() => {
         getStatus(ip)
           .then(res => setPiStatus(res))
           .catch((e) => { });
