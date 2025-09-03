@@ -111,3 +111,20 @@ export interface IGpioCameraSettings {
   ip: string;
   captureInterval: number;
 }
+
+export type IBackupStatus = {
+  running: boolean;
+  phase: "idle" | "scanning" | "copying" | "stopping" | "finished" | "error";
+  message: string;
+  started_at?: number | null;
+  finished_at?: number | null;
+  total_files: number;
+  files_done: number;
+  total_bytes: number;
+  bytes_copied: number;
+  current_relpath?: string | null;
+  current_bytes_total: number;
+  current_bytes_done: number;
+  bytes_per_sec?: number;
+  eta_seconds?: number | null;
+};

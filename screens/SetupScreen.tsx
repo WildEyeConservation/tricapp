@@ -29,10 +29,13 @@ import {
   getStatus,
   rebootPi,
   downloadImuLogs,
-  downloadGpsLogs
+  downloadGpsLogs,
+  startBackup,
+  getBackupStatus,
+  stopBackup
 } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
-import { IGpioCamera, IGpioCameraSettings, IStatus } from '../network/api_types';
+import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus } from '../network/api_types';
 import { setIps } from '../store/actions/WifiActions';
 
 interface IRemove {
@@ -78,6 +81,7 @@ const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IR
 const SetupScreen = ({ route, navigation }: SetupProps) => {
   const dispatch = useDispatch();
   const getStatusInterval = useRef<NodeJS.Timer | null>(null);
+  const getBackupStatusInterval = useRef<NodeJS.Timer | null>(null);
 
   const ips = useSelector((state: RootState) => state.wifi.ips);
 
@@ -86,6 +90,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [piStatus, setPiStatus] = useState<IStatus>();
   const [lastGpsUpdate, setLastGpsUpdate] = useState<number>(0);
+  const [backupStatus, setBackupStatus] = useState<IBackupStatus>();
 
   useEffect(() => {
     navigation.setOptions({
@@ -158,14 +163,10 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
     for (const ip of ips) {
       try {
         const stats = await getStats(ip);
-
-
         newGpioCams.push({
           ip: ip,
           captureInterval: stats.captureInterval,
         });
-
-        setPiStatus
       } catch (e) {
         newGpioCams.push({
           ip: ip,
@@ -244,10 +245,9 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>SNR:</Text>
-            {/* Use with negative sign and swap min and max */}
-            <Text style={styles.textNormal}>Min: {piStatus?.gps.max ? -piStatus.gps.max : 0}dBm</Text>
-            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? -piStatus.gps.avg.toFixed(0) : 0}dBm</Text>
-            <Text style={styles.textNormal}>Max: {piStatus?.gps.min ? -piStatus.gps.min : 0}dBm</Text>
+            <Text style={styles.textNormal}>Min: {piStatus?.gps.min ? piStatus.gps.min : 0}</Text>
+            <Text style={styles.textNormal}>Avg: {piStatus?.gps.avg ? piStatus.gps.avg.toFixed(0) : 0}</Text>
+            <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
           </View>
         </View>}
         <View style={styles.horizontalSpacerWithMargin}></View>
@@ -351,6 +351,64 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               }}
             ></MyButton>
           </View>
+        </View>}
+        <View style={styles.horizontalSpacerWithMargin}></View>
+        {gpioCams.length > 0 && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Backup:</Text>
+            {backupStatus && <Text style={styles.textNormal}>{backupStatus?.message}</Text>}
+            {backupStatus && <Text style={styles.textNormal}>ETA: {backupStatus?.eta_seconds ? backupStatus.eta_seconds.toFixed(0) : 0}s</Text>}
+            <MyButton
+              title={backupStatus === undefined ? 'Start' : backupStatus.phase === 'finished' ? 'Start' : 'Stop'}
+              disabled={!((backupStatus === undefined) || (backupStatus.phase === 'finished') || (backupStatus.phase === 'copying'))}
+              width={70}
+              onPress={() => {
+                if ((backupStatus === undefined) || (backupStatus.phase === 'finished')) {
+                  Toast.show('Starting...');
+                  startBackup(gpioCams[selectedIdx].ip).then((res) => {
+                    clearInterval(getStatusInterval.current);
+                    clearInterval(getBackupStatusInterval.current);
+                    getBackupStatus(gpioCams[selectedIdx].ip).then((res) => { setBackupStatus(res) }).catch((e) => console.log(e));
+                    getBackupStatusInterval.current = setInterval(() => {
+                      console.log('Update Backup Status')
+                      getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
+                        setBackupStatus(res);
+                        if (res.phase === 'finished') {
+                          clearInterval(getBackupStatusInterval.current);
+                        }
+                      }).catch((e) => console.log(e));
+                    }, 20000);
+                  }).catch((e) => console.log(e));
+                } else {
+                  Toast.show('Stopping...');
+                  getBackupStatus(gpioCams[selectedIdx].ip).then((res) => { setBackupStatus(res) }).catch((e) => console.log(e));
+                  stopBackup(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+                }
+              }}
+            ></MyButton>
+          </View>
+          {backupStatus && backupStatus.phase === 'copying' && <View style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.textNormal}>Files:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.textNormal}>{backupStatus?.files_done}</Text>
+                <Text style={styles.textNormal}>/</Text>
+                <Text style={styles.textNormal}>{backupStatus?.total_files}</Text>
+              </View>
+              <Text style={styles.textNormal}>{backupStatus.total_files > 0 ?
+                (backupStatus.files_done / backupStatus.total_files * 100).toFixed(0) : 0}%</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.textNormal}>Bytes:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.textNormal}>{(backupStatus.bytes_copied / 1048576).toFixed(0)}MB</Text>
+                <Text style={styles.textNormal}>/</Text>
+                <Text style={styles.textNormal}>{(backupStatus.total_bytes / 1048576).toFixed(0)}MB</Text>
+              </View>
+              <Text style={styles.textNormal}>{backupStatus.total_bytes > 0 ?
+                (backupStatus.bytes_copied / backupStatus.total_bytes * 100).toFixed(0) : 0}%</Text>
+            </View>
+          </View>}
         </View>}
       </View>
     </SafeAreaView >

@@ -9,7 +9,8 @@ import {
   ICopyEta,
   IImageCount,
   ILensNumber,
-  IReturnStatus
+  IReturnStatus,
+  IBackupStatus
 } from './api_types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-simple-toast';
@@ -21,23 +22,6 @@ const SERVER_IP = 'https://detweb.hopto.org:443';
 const TIMEOUT = 2000;
 
 let syncing = false;
-export const unsubscribe = NetInfo.addEventListener((state) => {
-  console.log("Connection type", state.isConnected);
-  if (state.isConnected) {
-    // check if there are locally stored data to transmit
-    if (!syncing) {
-      // the event listener calls this 3 times -> avoid by checking bool status
-      syncing = true;
-      syncExif('').then(() => { syncing = false; }).catch((err) => {
-        console.log(err.toString());
-        syncing = false;
-      });
-    }
-  } else {
-    syncing = false;
-  }
-});
-
 export const syncExif = async (ip: string) => {
   const netInfo = await NetInfo.fetch();
 
@@ -59,6 +43,23 @@ export const syncExif = async (ip: string) => {
   }
 }
 
+export const unsubscribe = NetInfo.addEventListener((state) => {
+  console.log("Connection type", state.isConnected);
+  if (state.isConnected) {
+    // check if there are locally stored data to transmit
+    if (!syncing) {
+      // the event listener calls this 3 times -> avoid by checking bool status
+      syncing = true;
+      syncExif('').then(() => { syncing = false; }).catch((err) => {
+        console.log(err.toString());
+        syncing = false;
+      });
+    }
+  } else {
+    syncing = false;
+  }
+});
+
 export const getStatus = (reqIp: string) => {
   const promise = new Promise<IStatus>((resolve, reject) => {
     Promise.race<IStatus>([
@@ -74,12 +75,12 @@ export const getStatus = (reqIp: string) => {
         setTimeout(() => reject(new Error('timeout')), TIMEOUT)
       )
     ])
-    .then((res: IStatus) => {
-      resolve(res);
-    })
-    .catch((err: any) => {
-      reject(err);
-    });
+      .then((res: IStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
   });
   return promise;
 }
@@ -99,12 +100,12 @@ export const getStats = (reqIp: string) => {
         setTimeout(() => reject(new Error('timeout')), TIMEOUT)
       )
     ])
-    .then((res: IStats) => {
-      resolve(res);
-    })
-    .catch((err: any) => {
-      reject(err);
-    });
+      .then((res: IStats) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
   });
   return promise;
 }
@@ -291,12 +292,12 @@ export const getImageCount = (reqIp: string) => {
         setTimeout(() => reject(new Error('timeout')), TIMEOUT)
       )
     ])
-    .then((res: IImageCount) => {
-      resolve(res);
-    })
-    .catch((err: any) => {
-      reject(err);
-    });
+      .then((res: IImageCount) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
   });
   return promise;
 }
@@ -315,18 +316,18 @@ const syncFromPi = async (ip: string, netInfo: NetInfoState) => {
     try {
       const missingIds = await sendExifSessionIds(availableIds);
       const exifSessions = await getExifSessions(ip, missingIds);
-      Toast.show(`Syncing ${exifSessions.sessions.length} sessions...`, Toast.SHORT);      
+      Toast.show(`Syncing ${exifSessions.sessions.length} sessions...`, Toast.SHORT);
       let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
       // exifSessions could be very large -> send one by one
       console.log('syncFromPi', availableIds.sessionIds.length, missingIds.sessionIds.length, exifSessions.sessions.length)
       for (const exifSession of exifSessions.sessions) {
         try {
           await sendExifSessions({ sessions: [exifSession] });
-          await AsyncStorage.removeItem(`@Tricap:sessions${exifSession.sessionId}`);          
+          await AsyncStorage.removeItem(`@Tricap:sessions${exifSession.sessionId}`);
         } catch (e) {
           console.log(e);
           updatedMissingIds.sessionIds.push(exifSession.sessionId);
-        }        
+        }
       }
       await storeExifSessionIds(updatedMissingIds);
     } catch (e) {
@@ -364,7 +365,7 @@ const syncFromLocalStorage = async (netInfo: NetInfoState) => {
   if (availableIds) {
     try {
       const missingIds = await sendExifSessionIds(availableIds);
-      Toast.show(`Syncing ${missingIds.sessionIds.length} local sessions...`, Toast.SHORT);      
+      Toast.show(`Syncing ${missingIds.sessionIds.length} local sessions...`, Toast.SHORT);
       let updatedMissingIds: IExifSessionIds = { sessionIds: [] };
       for (const missingId of missingIds.sessionIds) {
         try {
@@ -474,49 +475,49 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     Promise.race<IReturnStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/capture_interval`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          interval: interval
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            interval: interval
+          })
         })
-      })
-      .then(async res => {
-        const contentType = res.headers.get("content-type");
-        if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
-          try {
-            const msgBody = await res.json();
-            if (msgBody.msg) {
-              throw new Error(msgBody.msg);
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+              const msgBody = await res.json();
+              if (msgBody.msg) {
+                throw new Error(msgBody.msg);
+              }
+              throw new Error("Bad response from server");
+            } catch (e) {
+              throw e;
             }
+          } else if (res.status >= 400 && res.status < 600) {
             throw new Error("Bad response from server");
-          } catch (e) {
-            throw e;
+          } else {
+            return res.json();
           }
-        } else if (res.status >= 400 && res.status < 600) {
-          throw new Error("Bad response from server");
-        } else {
-          return res.json();
-        }
-      })
+        })
+        .then((res: IReturnStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
         reject(err);
-      })),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
-      )
-    ])
-    .then((res: IReturnStatus) => {
-      resolve(res);
-    })
-    .catch((err: any) => {
-      reject(err);
-    });
+      });
   });
   return promise;
 }
@@ -594,4 +595,47 @@ export async function downloadGpsLogs(reqIp: string) {
   const res = await task;
   console.log('Saved to:', res.path(), 'status:', res.info().status);
   return res.path();
+}
+
+export async function startBackup(reqIp: string) {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/backup_start`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('startBackup', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export async function getBackupStatus(reqIp: string) {
+  const promise = new Promise<IBackupStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/backup_status`).then(res => res.json())
+      .then((res: IBackupStatus) => {
+        console.log('getBackupStatus', res)
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('getBackupStatus', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export async function stopBackup(reqIp: string) {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/backup_stop`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('stopBackup', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
 }
