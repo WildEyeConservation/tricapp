@@ -359,30 +359,39 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             {backupStatus && <Text style={styles.textNormal}>{backupStatus?.message}</Text>}
             {backupStatus && <Text style={styles.textNormal}>ETA: {backupStatus?.eta_seconds ? backupStatus.eta_seconds.toFixed(0) : 0}s</Text>}
             <MyButton
-              title={backupStatus === undefined ? 'Start' : backupStatus.phase === 'finished' ? 'Start' : 'Stop'}
-              disabled={!((backupStatus === undefined) || (backupStatus.phase === 'finished') || (backupStatus.phase === 'copying'))}
+              title={backupStatus === undefined ? 'Start' : backupStatus.running === false ? 'Start' : 'Stop'}
+              disabled={!((backupStatus === undefined) || (backupStatus.running === false) || (backupStatus.phase === 'copying'))}
               width={70}
               onPress={() => {
-                if ((backupStatus === undefined) || (backupStatus.phase === 'finished')) {
+                if ((backupStatus === undefined) || (backupStatus.running === false)) {
                   Toast.show('Starting...');
+                  setBackupStatus({
+                    running: true,
+                    phase: "idle",
+                    message: "Start requested",
+                    percent: 0,
+                    bytes_done: 0,
+                    bytes_total: 0,
+                    files_done: 0,
+                    files_total: 0,
+                    eta_seconds: null,
+                  })
                   startBackup(gpioCams[selectedIdx].ip).then((res) => {
                     clearInterval(getStatusInterval.current);
                     clearInterval(getBackupStatusInterval.current);
-                    getBackupStatus(gpioCams[selectedIdx].ip).then((res) => { setBackupStatus(res) }).catch((e) => console.log(e));
                     getBackupStatusInterval.current = setInterval(() => {
                       console.log('Update Backup Status')
                       getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
                         setBackupStatus(res);
-                        if (res.phase === 'finished') {
+                        if (res.running === false) {
                           clearInterval(getBackupStatusInterval.current);
                         }
                       }).catch((e) => console.log(e));
-                    }, 20000);
+                    }, 10000);
                   }).catch((e) => console.log(e));
                 } else {
                   Toast.show('Stopping...');
-                  stopBackup(gpioCams[selectedIdx].ip).then((res) => {}).catch((e) => console.log(e));
-                  getBackupStatus(gpioCams[selectedIdx].ip).then((res) => { setBackupStatus(res) }).catch((e) => console.log(e));
+                  stopBackup(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
                 }
               }}
             ></MyButton>
@@ -393,20 +402,20 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={styles.textNormal}>{backupStatus?.files_done}</Text>
                 <Text style={styles.textNormal}>/</Text>
-                <Text style={styles.textNormal}>{backupStatus?.total_files}</Text>
+                <Text style={styles.textNormal}>{backupStatus?.files_total}</Text>
               </View>
-              <Text style={styles.textNormal}>{backupStatus.total_files > 0 ?
-                (backupStatus.files_done / backupStatus.total_files * 100).toFixed(0) : 0}%</Text>
+              <Text style={styles.textNormal}>{backupStatus.files_total > 0 ?
+                (backupStatus.files_done / backupStatus.files_total * 100).toFixed(0) : 0}%</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={styles.textNormal}>Bytes:</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={styles.textNormal}>{(backupStatus.bytes_copied / 1048576).toFixed(0)}MB</Text>
+                <Text style={styles.textNormal}>{(backupStatus.bytes_done / 1048576).toFixed(0)}MB</Text>
                 <Text style={styles.textNormal}>/</Text>
-                <Text style={styles.textNormal}>{(backupStatus.total_bytes / 1048576).toFixed(0)}MB</Text>
+                <Text style={styles.textNormal}>{(backupStatus.bytes_total / 1048576).toFixed(0)}MB</Text>
               </View>
-              <Text style={styles.textNormal}>{backupStatus.total_bytes > 0 ?
-                (backupStatus.bytes_copied / backupStatus.total_bytes * 100).toFixed(0) : 0}%</Text>
+              <Text style={styles.textNormal}>{backupStatus.bytes_total > 0 ?
+                (backupStatus.bytes_done / backupStatus.bytes_total * 100).toFixed(0) : 0}%</Text>
             </View>
           </View>}
         </View>}
