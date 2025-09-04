@@ -31,7 +31,8 @@ import {
   IStatus,
   ICopyEta,
   IReturnStatus,
-  IGpioCamera
+  IGpioCamera,
+  IGpioCameraSettings
 } from '../network/api_types';
 import MyButton from '../components/MyButton';
 import {
@@ -54,6 +55,14 @@ import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
 import dgram from 'react-native-udp';
 import { setIp, setIps } from '../store/actions/WifiActions';
 import { getStoredIps } from '../network/async_storage';
+
+interface ISelectIp {
+  (ip: string): void;
+}
+
+interface ISelectIndex {
+  (idx: number): void;
+}
 
 const AVERAGE_CR2_MB = 26.92;
 const { NetworkScanner } = NativeModules;
@@ -111,9 +120,9 @@ const requestRuntimePermissions = async () => {
   }
 };
 
-const renderFixedCols = (item: string | number, key: string) => {
+const renderFixedCols = (item: string | number, key: string, flex: number = 1) => {
   return (
-    <View style={{ flex: 1, alignItems: 'flex-start' }} key={key}>
+    <View style={{ flex: flex, alignItems: 'center' }} key={key}>
       <Text style={styles.textBold}>{item}</Text>
     </View>
   )
@@ -122,19 +131,13 @@ const renderFixedCols = (item: string | number, key: string) => {
 const renderGpioCam = (item: IGpioCamera, key: string) => {
   return (
     <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.status.mode}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.textNormal}>{item.status.cams.length}</Text>
+      <View style={{ flex: 2, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.imageCount.imageCount.length > 1 ? JSON.stringify(item.imageCount.imageCount) : item.imageCount.imageCount}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.textNormal}>{item.imageCount.imageCount}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.textNormal}>{item.status.gps ? 'Yes' : 'No'}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, alignItems: 'center' }}>
         <TouchableOpacity style={{ flex: 1, alignItems: 'center' }}
           disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')}
           onPress={() => {
@@ -162,7 +165,64 @@ const renderGpioCam = (item: IGpioCamera, key: string) => {
         </TouchableOpacity>
       </View>
     </View>
+  )
+}
 
+const renderSettings = (item: IGpioCamera, key: string, selectDevice: ISelectIndex, selectedIdx: number, refreshDevice: ISelectIp) => {
+  const isSelected = key === selectedIdx.toString();
+  return (
+    <TouchableOpacity style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key} onPress={() => {
+      console.log('select', item.ip);
+      selectDevice(parseInt(key));
+    }}>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={isSelected ? styles.textBold : styles.textNormal}>{key}</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.cams.length}</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.gps ? 'Yes' : 'No'}</Text>
+      </View>
+      <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+        console.log('do refresh');
+        refreshDevice(item.ip);
+      }}>
+        <Icon name="refresh" size={25} color={'black'} />
+      </TouchableOpacity>
+    </TouchableOpacity >
+  )
+}
+
+const renderExternal = (item: IExternal) => {
+  return (
+    <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center', justifyContent: 'space-evenly' }}>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.freeGB}GB</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.usedGB}GB</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.capacityGB}GB</Text>
+      </View>
+    </View >
+  )
+}
+
+const renderCams = (item: ICamera, key: string) => {
+  return (
+    <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.freeGB}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.usedGB}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.textNormal}>{item.capacityGB}</Text>
+      </View>
+    </View >
   )
 }
 
@@ -185,6 +245,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [totalTime, setTotalTime] = useState('0 s');
   const [samplePeriodS, setSamplePeriodS] = useState(0);
   const [lensNumber, setLensNumber] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState<number>(0);
 
   const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
 
@@ -293,29 +354,31 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const getData = async (ip: string) => {
     // use async await here to allow mount / unmount of external on pi
     try {
-      Toast.show('Synching...');
+      // Toast.show('Synching...');
+      Toast.show('Updating...');
       await getStats(ip)
         .then((res) => {
-          setCamStats(res.cameras);
+          console.log('getStats', res);
+          // setCamStats(res.cameras);
           setExternalStats(res.external);
-          setBatteryStats(res.battery);
-          setSamplePeriodS(res.captureInterval);
-          calculateTimeLeft(res);
+          // setBatteryStats(res.battery);
+          // setSamplePeriodS(res.captureInterval);
+          // calculateTimeLeft(res);
         })
         .catch((e) => Toast.show(e.toString(), Toast.LONG));
-      await getStatus(ip)
-        .then(res => setPiStatus(res))
-        .catch((e) => Toast.show(e.toString(), Toast.LONG));
-      await syncExif(ip)
-        .then((res) => Toast.show(res))
-        .catch((e) => Toast.show(e.toString(), Toast.LONG));
+      // await getStatus(ip)
+      //   .then(res => setPiStatus(res))
+      //   .catch((e) => Toast.show(e.toString(), Toast.LONG));
+      // await syncExif(ip)
+      //   .then((res) => Toast.show(res))
+      //   .catch((e) => Toast.show(e.toString(), Toast.LONG));
       setRefreshing(false);
-      clearInterval(getStatusInterval.current);
-      getStatusInterval.current = setInterval(() => {
-        getStatus(ip)
-          .then(res => setPiStatus(res))
-          .catch((e) => { });
-      }, 2000);
+      // clearInterval(getStatusInterval.current);
+      // getStatusInterval.current = setInterval(() => {
+      //   getStatus(ip)
+      //     .then(res => setPiStatus(res))
+      //     .catch((e) => { });
+      // }, 2000);
     } catch (e) {
       console.log(e);
     }
@@ -379,8 +442,8 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         {gpioCams.length === 0 ? <View></View> : (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', padding: 5 }}>
-              {["Status", "Cameras", "Images", "GPS", ""].map((item, index) => (
-                renderFixedCols(item, index.toString())
+              {["Status", "Images", ""].map((item, index) => (
+                renderFixedCols(item, index.toString(), index === 1 ? 2 : 1)
               ))}
             </View>
             <View style={styles.horizontalSpacer}></View>
@@ -388,7 +451,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
               renderGpioCam(item, index.toString())
             ))}
           </View>)}
-        <View style={styles.horizontalSpacerThick}></View>
+        <View style={styles.horizontalSpacerWithMargin}></View>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', width: '95%', justifyContent: 'space-evenly' }}>
             <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
@@ -415,6 +478,38 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             </TouchableOpacity>
           </View>
         </View>
+        <View style={styles.horizontalSpacerThick}></View>
+        {selectedIdx < gpioCams.length && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', padding: 5 }}>
+            {["Device Index", "Cameras", "GPS", ""].map((item, index) => (
+              renderFixedCols(item, index.toString())
+            ))}
+          </View>
+          <View style={styles.horizontalSpacer}></View>
+          {gpioCams.map((item, index: number) => (
+            renderSettings(item, index.toString(),
+              (idx) => {
+                setSelectedIdx(idx);
+                getData(gpioCams[idx].ip).then(() => { }).catch((e) => console.log(e));
+              },
+              selectedIdx,
+              (ip) => {
+                getData(ip).then(() => { }).catch((e) => console.log(e));
+              },)
+          ))}
+        </View>}
+        {externalStats && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {externalStats && selectedIdx < gpioCams.length && <View style={styles.card}>
+          <View>
+            <View style={{ flexDirection: 'row', padding: 5 }}>
+              {["Free", "Used", "Capacity"].map((item, index) => (
+                renderFixedCols(item, index.toString())
+              ))}
+            </View>
+            <View style={styles.horizontalSpacer}></View>
+            {renderExternal(externalStats)}
+          </View>
+        </View>}
       </View>
     </SafeAreaView >
   )
@@ -453,6 +548,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#ccc',
     width: '95%',
     height: 1
+  },
+  horizontalSpacerWithMargin: {
+    backgroundColor: '#ccc',
+    width: '95%',
+    height: 1,
+    marginVertical: 2
   },
   estimation: {
     width: '95%',

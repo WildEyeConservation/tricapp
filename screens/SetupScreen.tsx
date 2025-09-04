@@ -381,8 +381,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                   }).catch((e) => console.log(e));
                 } else {
                   Toast.show('Stopping...');
+                  stopBackup(gpioCams[selectedIdx].ip).then((res) => {}).catch((e) => console.log(e));
                   getBackupStatus(gpioCams[selectedIdx].ip).then((res) => { setBackupStatus(res) }).catch((e) => console.log(e));
-                  stopBackup(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
                 }
               }}
             ></MyButton>
