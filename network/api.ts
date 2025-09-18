@@ -91,6 +91,9 @@ export const getStats = (reqIp: string) => {
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/statistics`)
         .then(res => res.json())
         .then((res: IStats) => {
+          if (res.msg) {
+            Toast.show(res.msg);
+          }
           resolve(res);
         })
         .catch((err: any) => {
@@ -447,6 +450,9 @@ export const startCapture = (reqIp: string) => {
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/start_capture`).then(res => res.json())
       .then((res: IReturnStatus) => {
+        if (res.msg) {
+          Toast.show(res.msg);
+        }
         resolve(res);
       })
       .catch((err: any) => {
@@ -461,6 +467,9 @@ export const stopCapture = (reqIp: string) => {
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/stop_capture`).then(res => res.json())
       .then((res: IReturnStatus) => {
+        if (res.msg) {
+          Toast.show(res.msg);
+        }
         resolve(res);
       })
       .catch((err: any) => {
@@ -634,6 +643,36 @@ export async function stopBackup(reqIp: string) {
       })
       .catch((err: any) => {
         console.log('stopBackup', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export async function verifyAndDelete(reqIp: string) {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/verify_and_delete`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        console.log('verifyAndDelete', res)
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('verifyAndDelete', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export async function forceDelete(reqIp: string) {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    fetch(`http://${reqIp}:5000/api/force_delete`).then(res => res.json())
+      .then((res: IReturnStatus) => {
+        console.log('forceDelete', res)
+        resolve(res);
+      })
+      .catch((err: any) => {
+        console.log('forceDelete', err.toString());
         reject(err);
       });
   });

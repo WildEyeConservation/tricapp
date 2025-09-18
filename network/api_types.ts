@@ -14,9 +14,11 @@ export interface IExternal {
 
 export interface IStats {
   cameras: ICamera[];
-  external: IExternal;
+  internalStorage: IExternal;
+  externalStorage: IExternal;
   battery: number;
   captureInterval: number;
+  msg?: string;
 }
 
 export interface ICopyEta {
@@ -52,6 +54,7 @@ export interface ILensNumber {
 
 export interface IReturnStatus {
   success: boolean;
+  msg?: string;
 }
 
 interface IExifSessionInfo {
@@ -99,6 +102,7 @@ export interface IExifSessionIds {
 
 export interface IImageCount {
   imageCount: number[];
+  copyCount: number[];
 }
 
 export interface IGpioCamera {

@@ -32,11 +32,16 @@ import {
   downloadGpsLogs,
   startBackup,
   getBackupStatus,
-  stopBackup
+  stopBackup,
+  verifyAndDelete,
+  forceDelete
 } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus } from '../network/api_types';
-import { setIps } from '../store/actions/WifiActions';
+import { setIp, setIps } from '../store/actions/WifiActions';
+import confirm from '../components/Alert';
+import { formatSeconds } from '../components/Utils';
+import IPv4Prompt from '../components/IPv4Prompt';
 
 interface IRemove {
   (ip: string): void;
@@ -91,16 +96,24 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   const [piStatus, setPiStatus] = useState<IStatus>();
   const [lastGpsUpdate, setLastGpsUpdate] = useState<number>(0);
   const [backupStatus, setBackupStatus] = useState<IBackupStatus>();
+  const [addIpVisible, setAddIpVisible] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <TouchableOpacity onPress={() => {
-          Toast.show('Refreshing...');
-          buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
-        }}>
-          <Icon name="refresh" size={30} color={'black'} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity onPress={() => {
+            setAddIpVisible(true);
+          }}>
+            <Icon name="add" size={30} color={'black'} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => {
+            Toast.show('Refreshing...');
+            buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
+          }}>
+            <Icon name="refresh" size={30} color={'black'} />
+          </TouchableOpacity>
+        </View>
       ),
     });
   }, [navigation]);
@@ -157,6 +170,31 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   useEffect(() => {
     buildNetwork(ips).then((detected) => { setGpioCams(detected); }).catch((e) => console.log(e));
   }, [ips]);
+
+  useEffect(() => {
+    if (selectedIdx < gpioCams.length) {
+      console.log('Update Backup Status')
+      getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
+        setBackupStatus(res);
+      }).catch((e) => console.log(e));
+    }
+  }, [gpioCams, selectedIdx]);
+
+  useEffect(() => {
+    if (backupStatus?.running) {
+      clearInterval(getStatusInterval.current);
+      clearInterval(getBackupStatusInterval.current);
+      getBackupStatusInterval.current = setInterval(() => {
+        console.log('Update Backup Status')
+        getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
+          setBackupStatus(res);
+        }).catch((e) => console.log(e));
+      }, 10000);
+    } else {
+      console.log('clearInterval Backup Status')
+      clearInterval(getBackupStatusInterval.current);
+    }
+  }, [backupStatus]);
 
   const buildNetwork = async (ips: string[]) => {
     const newGpioCams: IGpioCameraSettings[] = []; // make copy
@@ -226,6 +264,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                 const filteredIps = ips.filter((ip: string) => ip !== ret);
                 console.log('filteredIps', filteredIps);
                 AsyncStorage.setItem('@Tricap:ips', JSON.stringify(filteredIps)).then(() => { }).catch(e => console.log(e));
+                dispatch(setIps(filteredIps));
               },
                 () => { setSelectedIdx(index); },
                 selectedIdx)
@@ -357,7 +396,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Backup:</Text>
             {backupStatus && <Text style={styles.textNormal}>{backupStatus?.message}</Text>}
-            {backupStatus && <Text style={styles.textNormal}>ETA: {backupStatus?.eta_seconds ? backupStatus.eta_seconds.toFixed(0) : 0}s</Text>}
+            {backupStatus && backupStatus.running && <Text style={styles.textNormal}>ETA: {backupStatus?.eta_seconds ? formatSeconds(backupStatus.eta_seconds) : 0}</Text>}
             <MyButton
               title={backupStatus === undefined ? 'Start' : backupStatus.running === false ? 'Start' : 'Stop'}
               disabled={!((backupStatus === undefined) || (backupStatus.running === false) || (backupStatus.phase === 'copying'))}
@@ -365,6 +404,11 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               onPress={() => {
                 if ((backupStatus === undefined) || (backupStatus.running === false)) {
                   Toast.show('Starting...');
+                  startBackup(gpioCams[selectedIdx].ip).then((res) => {
+                    if (res.msg) {
+                      Toast.show(res.msg);
+                    }
+                  }).then((e) => console.log(e))
                   setBackupStatus({
                     running: true,
                     phase: "idle",
@@ -376,25 +420,32 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                     files_total: 0,
                     eta_seconds: null,
                   })
-                  startBackup(gpioCams[selectedIdx].ip).then((res) => {
-                    clearInterval(getStatusInterval.current);
-                    clearInterval(getBackupStatusInterval.current);
-                    getBackupStatusInterval.current = setInterval(() => {
-                      console.log('Update Backup Status')
-                      getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
-                        setBackupStatus(res);
-                        if (res.running === false) {
-                          clearInterval(getBackupStatusInterval.current);
-                        }
-                      }).catch((e) => console.log(e));
-                    }, 10000);
-                  }).catch((e) => console.log(e));
                 } else {
                   Toast.show('Stopping...');
                   stopBackup(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
                 }
               }}
             ></MyButton>
+            {(backupStatus === undefined || backupStatus.running === false) && <MyButton
+              title='Delete'
+              width={70}
+              onPress={async () => {
+                if (await confirm('Delete item?', 'This cannot be undone', { destructive: true, confirmText: 'Delete' })) {
+                  Toast.show('Verifying...');
+                  verifyAndDelete(gpioCams[selectedIdx].ip).then(async (res) => {
+                    console.log('res', res)
+                    if (res.success) {
+                      Toast.show('Deleting...');
+                    } else {
+                      if (await confirm('Backup not verified', 'Delete anyway?', { destructive: true, confirmText: 'Delete' })) {
+                        Toast.show('Deleting...');
+                        forceDelete(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e))
+                      }
+                    }
+                  }).catch((e) => console.log(e));
+                }
+              }}
+            ></MyButton>}
           </View>
           {backupStatus && backupStatus.phase === 'copying' && <View style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -420,6 +471,20 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           </View>}
         </View>}
       </View>
+      <IPv4Prompt
+        visible={addIpVisible}
+        initialValue={""}
+        title="Add IP address"
+        confirmText="Add"
+        cancelText="Cancel"
+        onCancel={() => setAddIpVisible(false)}
+        onConfirm={(value: string) => {
+          Toast.show('Adding...');
+          setAddIpVisible(false);
+          dispatch(setIp(value));
+          // You could also persist it, e.g. AsyncStorage.setItem("server_ip", value)
+        }}
+      />
     </SafeAreaView >
   )
 }

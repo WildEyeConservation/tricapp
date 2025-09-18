@@ -55,6 +55,7 @@ import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
 import dgram from 'react-native-udp';
 import { setIp, setIps } from '../store/actions/WifiActions';
 import { getStoredIps } from '../network/async_storage';
+import { formatSeconds } from '../components/Utils'
 
 interface ISelectIp {
   (ip: string): void;
@@ -65,6 +66,7 @@ interface ISelectIndex {
 }
 
 const AVERAGE_CR2_MB = 26.92;
+const AVERAGE_ARW_MB = 62;
 const { NetworkScanner } = NativeModules;
 
 const socket = dgram.createSocket('udp4');
@@ -131,11 +133,14 @@ const renderFixedCols = (item: string | number, key: string, flex: number = 1) =
 const renderGpioCam = (item: IGpioCamera, key: string) => {
   return (
     <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
-      <View style={{ flex: 1, alignItems: 'center' }}>
+      <View style={{ flex: 4, alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.status.mode}</Text>
       </View>
-      <View style={{ flex: 2, alignItems: 'center' }}>
+      <View style={{ flex: 4, alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.imageCount.imageCount.length > 1 ? JSON.stringify(item.imageCount.imageCount) : item.imageCount.imageCount}</Text>
+      </View>
+      <View style={{ flex: 4, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.imageCount.copyCount.length > 1 ? JSON.stringify(item.imageCount.copyCount) : item.imageCount.copyCount}</Text>
       </View>
       <View style={{ flex: 1, alignItems: 'center' }}>
         <TouchableOpacity style={{ flex: 1, alignItems: 'center' }}
@@ -175,14 +180,14 @@ const renderSettings = (item: IGpioCamera, key: string, selectDevice: ISelectInd
       console.log('select', item.ip);
       selectDevice(parseInt(key));
     }}>
-      <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={isSelected ? styles.textBold : styles.textNormal}>{key}</Text>
+      <View style={{ flex: 4, alignItems: 'center' }}>
+        <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.ip}</Text>
       </View>
-      <View style={{ flex: 1, alignItems: 'center' }}>
+      <View style={{ flex: 4, alignItems: 'center' }}>
         <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.cams.length}</Text>
       </View>
-      <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.gps ? 'Yes' : 'No'}</Text>
+      <View style={{ flex: 4, alignItems: 'center' }}>
+        <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.gps.fix ? 'Yes' : 'No'}</Text>
       </View>
       <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
         console.log('do refresh');
@@ -194,17 +199,20 @@ const renderSettings = (item: IGpioCamera, key: string, selectDevice: ISelectInd
   )
 }
 
-const renderExternal = (item: IExternal) => {
+const renderStorage = (description: string, item: IExternal) => {
   return (
     <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center', justifyContent: 'space-evenly' }}>
       <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={styles.textNormal}>{item.freeGB}GB</Text>
+        <Text style={styles.textNormal}>{description}</Text>
       </View>
       <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={styles.textNormal}>{item.usedGB}GB</Text>
+        <Text style={styles.textNormal}>{item.freeGB ? item.freeGB : 0}GB</Text>
       </View>
       <View style={{ flex: 1, alignItems: 'center' }}>
-        <Text style={styles.textNormal}>{item.capacityGB}GB</Text>
+        <Text style={styles.textNormal}>{item.usedGB ? item.usedGB : 0}GB</Text>
+      </View>
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <Text style={styles.textNormal}>{item.capacityGB ? item.capacityGB : 0}GB</Text>
       </View>
     </View >
   )
@@ -237,6 +245,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [btConnecting, setBtConnecting] = useState(true);
 
   const [camStats, setCamStats] = useState<ICamera[]>();
+  const [internalStats, setInternalStats] = useState<IExternal>();
   const [externalStats, setExternalStats] = useState<IExternal>();
   const [batteryStats, setBatteryStats] = useState(0);
   const [piStatus, setPiStatus] = useState<IStatus>();
@@ -246,6 +255,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [samplePeriodS, setSamplePeriodS] = useState(0);
   const [lensNumber, setLensNumber] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
+  const [isError, setIsError] = useState<boolean>(false);
 
   const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
 
@@ -265,8 +275,6 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       })
 
     }).catch((err) => console.log(err));
-
-    // dispatch(setIp('192.168.88.84'));
 
     return () => {
       console.log('onClose');
@@ -360,12 +368,27 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         .then((res) => {
           console.log('getStats', res);
           // setCamStats(res.cameras);
-          setExternalStats(res.external);
+          setInternalStats(res.internalStorage);
+          setExternalStats(res.externalStorage);
           // setBatteryStats(res.battery);
-          // setSamplePeriodS(res.captureInterval);
+          setSamplePeriodS(res.captureInterval);
           // calculateTimeLeft(res);
         })
-        .catch((e) => Toast.show(e.toString(), Toast.LONG));
+        .catch((e) => {
+          Toast.show(e.toString(), Toast.LONG)
+          setInternalStats({
+            freeGB: 0,
+            capacityGB: 0,
+            usedGB: 0,
+          });
+          setExternalStats({
+            freeGB: 0,
+            capacityGB: 0,
+            usedGB: 0,
+          });
+          setSamplePeriodS(0);
+          // calculateTimeLeft(res);
+        });
       // await getStatus(ip)
       //   .then(res => setPiStatus(res))
       //   .catch((e) => Toast.show(e.toString(), Toast.LONG));
@@ -403,10 +426,20 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             mode: "OFFLINE",
             cams: [],
             camError: false,
-            gps: false,
+            gps: {
+              fix: false,
+              satellites: 0,
+              pdop: 0,
+              max: 0,
+              min: 0,
+              avg: 0,
+              lastUpdate: 0,
+            },
+            wifiSignal: 0
           },
           imageCount: {
-            imageCount: []
+            imageCount: [],
+            copyCount: []
           },
         });
         console.log(e);
@@ -439,11 +472,15 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.screenView}>
+        {gpioCams.length > 0 && isError && <View style={styles.errorCard}>
+          <Text style={styles.textBold}>Something went wrong</Text>
+        </View>}
+        {gpioCams.length > 0 && isError && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length === 0 ? <View></View> : (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', padding: 5 }}>
-              {["Status", "Images", ""].map((item, index) => (
-                renderFixedCols(item, index.toString(), index === 1 ? 2 : 1)
+              {["Status", "Captured", "Copied", ""].map((item, index) => (
+                renderFixedCols(item, index.toString(), index === 3 ? 1 : 4)
               ))}
             </View>
             <View style={styles.horizontalSpacer}></View>
@@ -481,8 +518,8 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         <View style={styles.horizontalSpacerThick}></View>
         {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'row', padding: 5 }}>
-            {["Device Index", "Cameras", "GPS", ""].map((item, index) => (
-              renderFixedCols(item, index.toString())
+            {["Device", "Cameras", "GPS", ""].map((item, index) => (
+              renderFixedCols(item, index.toString(), index === 3 ? 1 : 4)
             ))}
           </View>
           <View style={styles.horizontalSpacer}></View>
@@ -498,16 +535,28 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
               },)
           ))}
         </View>}
-        {externalStats && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {externalStats && selectedIdx < gpioCams.length && <View style={styles.card}>
+        {(externalStats || internalStats) && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {(externalStats || internalStats) && selectedIdx < gpioCams.length && <View style={styles.card}>
           <View>
             <View style={{ flexDirection: 'row', padding: 5 }}>
-              {["Free", "Used", "Capacity"].map((item, index) => (
+              {["", "Free", "Used", "Capacity"].map((item, index) => (
                 renderFixedCols(item, index.toString())
               ))}
             </View>
             <View style={styles.horizontalSpacer}></View>
-            {renderExternal(externalStats)}
+            {internalStats && renderStorage("Internal", internalStats)}
+            {externalStats && renderStorage("External", externalStats)}
+            {internalStats && gpioCams[selectedIdx].status.cams.length > 0 && samplePeriodS > 0 &&
+              <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }}>
+                <Text style={styles.textNormal}>Estimated flight time:</Text>
+                <Text style={styles.textNormal}>{
+                  formatSeconds(internalStats.freeGB *
+                    1024 *
+                    samplePeriodS /
+                    AVERAGE_ARW_MB /
+                    gpioCams[selectedIdx].status.cams.length)
+                }</Text>
+              </View>}
           </View>
         </View>}
       </View>
@@ -586,6 +635,18 @@ const styles = StyleSheet.create({
     elevation: 2,
     padding: 4,
     width: '100%',
+  },
+  errorCard: {
+    backgroundColor: '#ff0000ff',
+    borderRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+    padding: 4,
+    width: '100%',
+    alignItems: 'center'
   },
 });
 
