@@ -135,13 +135,13 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                 setLastGpsUpdate(999)
               }
             }
-          }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 1, 999)) });
+          }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 2, 999)) });
         }
       };
 
       checkStatus();
 
-      getStatusInterval.current = setInterval(checkStatus, 1000);
+      getStatusInterval.current = setInterval(checkStatus, 2000);
 
       return () => {
         console.log('stop refresh')
@@ -234,7 +234,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
     }
   }
 
-  if (gpioCams.length === 0) {
+  if (gpioCams.length === 0 && !addIpVisible) {
     return (
       <SafeAreaView style={styles.screen}>
         <View style={styles.screenView}>

@@ -21,6 +21,10 @@ import RNBlobUtil from 'react-native-blob-util';
 const SERVER_IP = 'https://detweb.hopto.org:443';
 const TIMEOUT = 2000;
 
+// used for slow download tasks
+let lastProgressAt = 0;
+const TOAST_PROGRESS_EVERY_MS = 2000;
+
 let syncing = false;
 export const syncExif = async (ip: string) => {
   const netInfo = await NetInfo.fetch();
@@ -66,6 +70,7 @@ export const getStatus = (reqIp: string) => {
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/status`)
         .then(res => res.json())
         .then((res: IStatus) => {
+          console.log('getStatus', res)
           resolve(res);
         })
         .catch((err: any) => {
@@ -91,9 +96,6 @@ export const getStats = (reqIp: string) => {
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/statistics`)
         .then(res => res.json())
         .then((res: IStats) => {
-          if (res.msg) {
-            Toast.show(res.msg);
-          }
           resolve(res);
         })
         .catch((err: any) => {
@@ -531,6 +533,14 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
   return promise;
 }
 
+const formatBytes = (bytes: number) => {
+  if (!Number.isFinite(bytes)) return '';
+  const units = ['B','KB','MB','GB','TB'];
+  let i = 0, v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+};
+
 export async function downloadLogs(reqIp: string) {
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
@@ -544,10 +554,15 @@ export async function downloadLogs(reqIp: string) {
     .config({ path: target, fileCache: true, overwrite: true })
     .fetch('GET', `http://${reqIp}:5000/api/download_logs`)
     .progress({ count: 10 }, (received, total) => {
+      const now = Date.now();
+      if (now - lastProgressAt < TOAST_PROGRESS_EVERY_MS) return;
+      lastProgressAt = now;
+
       if (total > 0) {
-        console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+        const pct = ((received / total) * 100).toFixed(1);
+        Toast.show(`Downloading… ${pct}%`, Toast.SHORT);
       } else {
-        console.log(`Received: ${received} bytes`);
+        Toast.show(`Received ${formatBytes(received)}`, Toast.SHORT);
       }
     });
 
@@ -569,10 +584,15 @@ export async function downloadImuLogs(reqIp: string) {
     .config({ path: target, fileCache: true, overwrite: true })
     .fetch('GET', `http://${reqIp}:5000/api/download_imu_logs`)
     .progress({ count: 10 }, (received, total) => {
+      const now = Date.now();
+      if (now - lastProgressAt < TOAST_PROGRESS_EVERY_MS) return;
+      lastProgressAt = now;
+
       if (total > 0) {
-        console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+        const pct = ((received / total) * 100).toFixed(1);
+        Toast.show(`Downloading… ${pct}%`, Toast.SHORT);
       } else {
-        console.log(`Received: ${received} bytes`);
+        Toast.show(`Received ${formatBytes(received)}`, Toast.SHORT);
       }
     });
 
@@ -594,10 +614,15 @@ export async function downloadGpsLogs(reqIp: string) {
     .config({ path: target, fileCache: true, overwrite: true })
     .fetch('GET', `http://${reqIp}:5000/api/download_gps_logs`)
     .progress({ count: 10 }, (received, total) => {
+      const now = Date.now();
+      if (now - lastProgressAt < TOAST_PROGRESS_EVERY_MS) return;
+      lastProgressAt = now;
+
       if (total > 0) {
-        console.log(`Progress: ${((received / total) * 100).toFixed(1)}%`);
+        const pct = ((received / total) * 100).toFixed(1);
+        Toast.show(`Downloading… ${pct}%`, Toast.SHORT);
       } else {
-        console.log(`Received: ${received} bytes`);
+        Toast.show(`Received ${formatBytes(received)}`, Toast.SHORT);
       }
     });
 

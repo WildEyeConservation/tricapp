@@ -234,9 +234,16 @@ const renderCams = (item: ICamera, key: string) => {
   )
 }
 
+function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  useEffect(() => { ref.current = value; }, [value]);
+  return ref;
+}
+
 const Homescreen = ({ route, navigation }: HomeProps) => {
   const dispatch = useDispatch();
   const getStatusInterval = useRef<NodeJS.Timer | null>(null);
+  const updateExpectedCaptureInterval = useRef<NodeJS.Timer | null>(null);
 
   const ips = useSelector((state: RootState) => state.wifi.ips);
 
@@ -256,8 +263,14 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [lensNumber, setLensNumber] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [isError, setIsError] = useState<boolean>(false);
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
 
   const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
+  const [prevGpioCams, setPrevGpioCams] = useState<IGpioCamera[] | null>(null);
+
+  // always points to the newest count
+  const gpioCamsRef = useLatest(gpioCams);
+  const prevGpioCamsRef = useLatest(prevGpioCams);
 
   useEffect(() => {
     setStarting(true);
@@ -328,36 +341,43 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
     }
   }, [piStatus?.camError]);
 
-  const calculateTimeLeft = (info: IStats) => {
-    // calculate camera min time
-    const minFreeMB = Math.min.apply(Math, info.cameras.map((o) => o.freeMB));
-    const camFreeS = minFreeMB / AVERAGE_CR2_MB * info.captureInterval;
-    try {
-      setCameraTime(timeAsHHMM(camFreeS));
-    } catch (e) {
-      setCameraTime(timeAsHHMM(0));
-    }
-
-    // calculate external min time
-    const numCameras = info.cameras.length > 0 ? info.cameras.length : 3;
-    const extFreeS = info.external.freeGB * 1024 / AVERAGE_CR2_MB / numCameras * info.captureInterval;
-    try {
-      setExternalTime(timeAsHHMM(extFreeS));
-    } catch (e) {
-      setExternalTime(timeAsHHMM(0));
-    }
-
-    // calculate minimum total time
-    try {
-      if (extFreeS < camFreeS) {
-        setTotalTime(timeAsHHMM(extFreeS));
-      } else {
-        setTotalTime(timeAsHHMM(camFreeS));
+  useEffect(() => {
+    console.log('isCapturing changed', isCapturing)
+    if (isCapturing) {
+      if (updateExpectedCaptureInterval.current) {
+        clearInterval(updateExpectedCaptureInterval.current);
       }
-    } catch (e) {
-      setTotalTime(timeAsHHMM(0));
+
+      updateExpectedCaptureInterval.current = setInterval(() => {
+        console.log('updateExpectedCaptureInterval')
+        if (prevGpioCamsRef && prevGpioCamsRef.current) {
+          for (let i = 0; i < gpioCamsRef.current.length; i++) {
+            if (gpioCamsRef.current[i].status.mode === 'STARTED') {
+              for (let j = 0; j < gpioCamsRef.current[i].imageCount.imageCount.length; j++) {
+                const currentCount = gpioCamsRef.current[i].imageCount.imageCount[j];
+                const currentCopyCount = gpioCamsRef.current[i].imageCount.copyCount[j];
+                if ((prevGpioCamsRef.current.length > i) && (prevGpioCamsRef.current[i].imageCount.imageCount.length > j)) {
+                  const prevCount = prevGpioCamsRef.current[i].imageCount.imageCount[j];
+                  const prevCopyCount = prevGpioCamsRef.current[i].imageCount.copyCount[j];
+                  console.log('count', prevCount, currentCount, 'copy', prevCopyCount, currentCopyCount);
+                  if ((currentCount <= prevCount) || (currentCopyCount <= prevCopyCount)) {
+                    setIsError(true);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        setPrevGpioCams(gpioCamsRef.current);
+      }, 5000); // this time must be greater than the capture interval
+    } else {
+      if (updateExpectedCaptureInterval.current) {
+        clearInterval(updateExpectedCaptureInterval.current);
+      }
     }
-  }
+  }, [isCapturing]);
 
   const getData = async (ip: string) => {
     // use async await here to allow mount / unmount of external on pi
@@ -408,6 +428,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   }
 
   const buildNetwork = async (ips: string[]) => {
+    let isAnyCapturing = false;
     const newGpioCams: IGpioCamera[] = []; // make copy
     for (const ip of ips) {
       try {
@@ -419,6 +440,10 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
           status: status,
           imageCount: imagesCaptured,
         });
+
+        if (status.mode === 'STARTED') {
+          isAnyCapturing = true;
+        }
       } catch (e) {
         newGpioCams.push({
           ip: ip,
@@ -446,6 +471,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       }
     }
 
+    setIsCapturing(isAnyCapturing);
     return newGpioCams;
   }
 
@@ -491,10 +517,14 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         <View style={styles.horizontalSpacerWithMargin}></View>
         <View style={styles.card}>
           <View style={{ flexDirection: 'row', width: '95%', justifyContent: 'space-evenly' }}>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={async () => {
               Toast.show('Start capturing...');
+              setIsError(false);
+              setPrevGpioCams(null);
               for (const gpioCam of gpioCams) {
-                startCapture(gpioCam.ip).then(() => console.log('start req', gpioCam.ip)).catch((e) => console.log(e));
+                startCapture(gpioCam.ip).then(() => {
+                  console.log('start req', gpioCam.ip)
+                }).catch((e) => console.log(e));
               }
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -504,6 +534,9 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             </TouchableOpacity>
             <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
               Toast.show('Stop capturing...');
+              if (updateExpectedCaptureInterval.current) {
+                clearInterval(updateExpectedCaptureInterval.current);
+              }
               for (const gpioCam of gpioCams) {
                 stopCapture(gpioCam.ip).then(() => console.log('stop req', gpioCam.ip)).catch((e) => console.log(e));
               }
