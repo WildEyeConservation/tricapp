@@ -87,9 +87,9 @@ const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IS
 const renderCameras = (key: number, selectCamera: ISelectCamera) => {
   return (
     <MyButton
-      title={`Camera ${(key + 1).toString()}`}
+      title={`Cam ${(key + 1).toString()}`}
       key={key.toString()}
-      width={70}
+      width={60}
       onPress={() => { selectCamera(key) }}
     ></MyButton>
   )
