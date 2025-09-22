@@ -133,6 +133,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+    color: 'black',
   },
   ok: { borderColor: "#3fb950" },
   err: { borderColor: "#ff5a5f" },

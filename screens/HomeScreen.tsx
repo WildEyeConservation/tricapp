@@ -314,7 +314,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         buildNetwork(ips).then((gpioCamsDetected) => {
           setGpioCams(gpioCamsDetected);
         }).catch((e) => console.log(e));
-      }, 2000);
+      }, 3000);
 
       if (ips.length > 0) {
         AsyncStorage.setItem('@Tricap:ips', JSON.stringify(ips)).then(() => { }).catch(e => console.log(e));
@@ -371,7 +371,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         }
 
         setPrevGpioCams(gpioCamsRef.current);
-      }, 5000); // this time must be greater than the capture interval
+      }, 10000); // this time must be greater than the capture interval
     } else {
       if (updateExpectedCaptureInterval.current) {
         clearInterval(updateExpectedCaptureInterval.current);

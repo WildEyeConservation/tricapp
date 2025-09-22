@@ -34,7 +34,8 @@ import {
   getBackupStatus,
   stopBackup,
   verifyAndDelete,
-  forceDelete
+  forceDelete,
+  getImages
 } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
 import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus } from '../network/api_types';
@@ -43,12 +44,12 @@ import confirm from '../components/Alert';
 import { formatSeconds } from '../components/Utils';
 import IPv4Prompt from '../components/IPv4Prompt';
 
-interface IRemove {
+interface ISelectIp {
   (ip: string): void;
 }
 
-interface ISetDevice {
-  (ip: string): void;
+interface ISelectCamera {
+  (ip: number): void;
 }
 
 export let phoneNr = '';
@@ -61,7 +62,7 @@ const renderFixedCols = (item: string | number, key: string) => {
   )
 }
 
-const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IRemove, selectDevice: ISetDevice, selectedIdx: number) => {
+const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: ISelectIp, selectDevice: ISelectIp, selectedIdx: number) => {
   return (
     <TouchableOpacity style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key} onPress={() => {
       console.log('select', item.ip);
@@ -80,6 +81,17 @@ const renderSettings = (item: IGpioCameraSettings, key: string, removeDevice: IR
         <Icon name="delete" size={30} color={'black'} />
       </TouchableOpacity>
     </TouchableOpacity >
+  )
+}
+
+const renderCameras = (key: number, selectCamera: ISelectCamera) => {
+  return (
+    <MyButton
+      title={`Camera ${(key + 1).toString()}`}
+      key={key.toString()}
+      width={70}
+      onPress={() => { selectCamera(key) }}
+    ></MyButton>
   )
 }
 
@@ -469,6 +481,23 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                 (backupStatus.bytes_done / backupStatus.bytes_total * 100).toFixed(0) : 0}%</Text>
             </View>
           </View>}
+        </View>}
+        <View style={styles.horizontalSpacerWithMargin}></View>
+        {selectedIdx < gpioCams.length && piStatus && <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={styles.textNormal}>Download images:</Text>
+            {/* <View style={{ flexDirection: 'row', width: '100%' }}> */}
+            {piStatus.cams.map((item, index) => (renderCameras(index, async (selectedCamIdx) => {
+              console.log('index', selectedCamIdx)
+              Toast.show('Downloading...');
+              try {
+                await getImages(gpioCams[selectedIdx].ip, selectedCamIdx)
+                Toast.show('Download complete');
+              } catch {
+                console.log('download images failed')
+              }
+            })))}
+          </View>
         </View>}
       </View>
       <IPv4Prompt

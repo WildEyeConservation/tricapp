@@ -448,6 +448,36 @@ export const doPreview = (reqIp: string) => {
   return promise;
 }
 
+export const getImages = async (reqIp: string, cameraIndex: number) => {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  const filename = `image_${timestamp}.ARW`;
+  const target = `/storage/emulated/0/Download/${filename}`;
+
+  // Overwrite any previous file; no resume
+  const task = RNBlobUtil
+    .config({ path: target, fileCache: true, overwrite: true })
+    .fetch('GET', `http://${reqIp}:5000/api/get_images/${cameraIndex}`)
+    .progress({ count: 10 }, (received, total) => {
+      const now = Date.now();
+      if (now - lastProgressAt < TOAST_PROGRESS_EVERY_MS) return;
+      lastProgressAt = now;
+
+      if (total > 0) {
+        const pct = ((received / total) * 100).toFixed(1);
+        Toast.show(`Downloading… ${pct}%`, Toast.SHORT);
+      } else {
+        Toast.show(`Received ${formatBytes(received)}`, Toast.SHORT);
+      }
+    });
+
+  const res = await task;
+  console.log('Saved to:', res.path(), 'status:', res.info().status);
+  return res.path();
+}
+
 export const startCapture = (reqIp: string) => {
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/start_capture`).then(res => res.json())
@@ -535,7 +565,7 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
 
 const formatBytes = (bytes: number) => {
   if (!Number.isFinite(bytes)) return '';
-  const units = ['B','KB','MB','GB','TB'];
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let i = 0, v = bytes;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
