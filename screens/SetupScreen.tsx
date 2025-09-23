@@ -282,7 +282,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                 selectedIdx)
             ))}
           </View>)}
-        <View style={styles.horizontalSpacerThick}></View>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerThick}></View>}
         {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Wi-Fi:</Text>
@@ -301,8 +301,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             <Text style={styles.textNormal}>Max: {piStatus?.gps.max ? piStatus.gps.max : 0}</Text>
           </View>
         </View>}
-        <View style={styles.horizontalSpacerWithMargin}></View>
-        <View style={styles.card}>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Set interval:</Text>
             <MyButton
@@ -335,8 +335,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               }}
             ></MyButton>
           </View>
-        </View>
-        <View style={styles.horizontalSpacerWithMargin}></View>
+        </View>}
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
         {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Download logs:</Text>
@@ -381,7 +381,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
           </View>
         </View>}
-        <View style={styles.horizontalSpacerWithMargin}></View>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Restart:</Text>
@@ -403,7 +403,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
           </View>
         </View>}
-        <View style={styles.horizontalSpacerWithMargin}></View>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length > 0 && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Backup:</Text>
@@ -482,7 +482,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             </View>
           </View>}
         </View>}
-        <View style={styles.horizontalSpacerWithMargin}></View>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
         {selectedIdx < gpioCams.length && piStatus && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Download images:</Text>
