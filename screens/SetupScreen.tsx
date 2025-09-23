@@ -89,7 +89,7 @@ const renderCameras = (key: number, selectCamera: ISelectCamera) => {
     <MyButton
       title={`Cam ${(key + 1).toString()}`}
       key={key.toString()}
-      width={60}
+      width={70}
       onPress={() => { selectCamera(key) }}
     ></MyButton>
   )

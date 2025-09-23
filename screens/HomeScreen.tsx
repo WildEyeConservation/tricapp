@@ -65,8 +65,12 @@ interface ISelectIndex {
   (idx: number): void;
 }
 
+interface ISelectDevice {
+  (dev: IGpioCamera): void;
+}
+
 const AVERAGE_CR2_MB = 26.92;
-const AVERAGE_ARW_MB = 62;
+const AVERAGE_ARW_MB = 74;
 const { NetworkScanner } = NativeModules;
 
 const socket = dgram.createSocket('udp4');
@@ -130,7 +134,7 @@ const renderFixedCols = (item: string | number, key: string, flex: number = 1) =
   )
 }
 
-const renderGpioCam = (item: IGpioCamera, key: string) => {
+const renderGpioCam = (item: IGpioCamera, key: string, selectDevice: ISelectDevice) => {
   return (
     <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
       <View style={{ flex: 4, alignItems: 'center' }}>
@@ -146,23 +150,7 @@ const renderGpioCam = (item: IGpioCamera, key: string) => {
         <TouchableOpacity style={{ flex: 1, alignItems: 'center' }}
           disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')}
           onPress={() => {
-            if (item.status?.mode === 'STARTED') {
-              Toast.show('Stop capturing...');
-              stopCapture(item.ip)
-                .then(res => {
-                  const resultString = res.success ? "Stopped" : "Already stopped";
-                  // Toast.show(resultString)
-                })
-                .catch((err) => Toast.show(err.toString()));
-            } else {
-              Toast.show('Start capturing...');
-              startCapture(item.ip)
-                .then(res => {
-                  const resultString = res.success ? "Started" : "Already started";
-                  // Toast.show(resultString)
-                })
-                .catch((err) => Toast.show(err.toString()));
-            }
+            selectDevice(item);
           }}>
           {item.status?.mode === 'STARTED' ?
             <IconCom name="camera-off" size={25} color={'black'} /> :
@@ -297,6 +285,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       stopBluetooth();
       clearInterval(getStatusInterval.current);
       clearInterval(hotspotSendInfoInterval);
+      clearInterval(updateExpectedCaptureInterval.current);
     }
   }, []);
 
@@ -323,6 +312,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       return () => {
         console.log('stop refresh')
         clearInterval(getStatusInterval.current);
+        setIsCapturing(false);
       }
     }, [ips])
   );
@@ -499,7 +489,9 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
     <SafeAreaView style={styles.screen}>
       <View style={styles.screenView}>
         {gpioCams.length > 0 && isError && <View style={styles.errorCard}>
-          <Text style={styles.textBold}>Something went wrong</Text>
+          <TouchableOpacity onPress={() => { setIsError(false) }}>
+            <Text style={styles.textBold}>Something went wrong! Dismiss?</Text>
+          </TouchableOpacity>
         </View>}
         {gpioCams.length > 0 && isError && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length === 0 ? <View></View> : (
@@ -511,7 +503,30 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             </View>
             <View style={styles.horizontalSpacer}></View>
             {gpioCams.map((item, index) => (
-              renderGpioCam(item, index.toString())
+              renderGpioCam(item, index.toString(), (dev) => {
+                if (dev.status?.mode === 'STARTED') {
+                  Toast.show('Stop capturing...');
+                  if (updateExpectedCaptureInterval.current) {
+                    clearInterval(updateExpectedCaptureInterval.current);
+                  }
+                  stopCapture(dev.ip)
+                    .then(res => {
+                      const resultString = res.success ? "Stopped" : "Already stopped";
+                      // Toast.show(resultString)
+                    })
+                    .catch((err) => Toast.show(err.toString()));
+                } else {
+                  Toast.show('Start capturing...');
+                  setIsError(false);
+                  setPrevGpioCams(null);
+                  startCapture(dev.ip)
+                    .then(res => {
+                      const resultString = res.success ? "Started" : "Already started";
+                      // Toast.show(resultString)
+                    })
+                    .catch((err) => Toast.show(err.toString()));
+                }
+              })
             ))}
           </View>)}
         <View style={styles.horizontalSpacerWithMargin}></View>
