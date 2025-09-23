@@ -134,19 +134,19 @@ const renderFixedCols = (item: string | number, key: string, flex: number = 1) =
   )
 }
 
-const renderGpioCam = (item: IGpioCamera, key: string, selectDevice: ISelectDevice) => {
+const renderGpioCam = (item: IGpioCamera, key: string, flex: number[], selectDevice: ISelectDevice) => {
   return (
     <View style={{ flexDirection: 'row', padding: 5, minHeight: 32, alignItems: 'center' }} key={key}>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[0], alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.status.mode}</Text>
       </View>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[1], alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.imageCount.imageCount.length > 1 ? JSON.stringify(item.imageCount.imageCount) : item.imageCount.imageCount}</Text>
       </View>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[2], alignItems: 'center' }}>
         <Text style={styles.textNormal}>{item.imageCount.copyCount.length > 1 ? JSON.stringify(item.imageCount.copyCount) : item.imageCount.copyCount}</Text>
       </View>
-      <View style={{ flex: 1, alignItems: 'center' }}>
+      <View style={{ flex: flex[3], alignItems: 'center' }}>
         <TouchableOpacity style={{ flex: 1, alignItems: 'center' }}
           disabled={!(item.status?.mode === 'STARTED' || item.status?.mode === 'STOPPED')}
           onPress={() => {
@@ -161,23 +161,23 @@ const renderGpioCam = (item: IGpioCamera, key: string, selectDevice: ISelectDevi
   )
 }
 
-const renderSettings = (item: IGpioCamera, key: string, selectDevice: ISelectIndex, selectedIdx: number, refreshDevice: ISelectIp) => {
+const renderSettings = (item: IGpioCamera, key: string, flex: number[], selectDevice: ISelectIndex, selectedIdx: number, refreshDevice: ISelectIp) => {
   const isSelected = key === selectedIdx.toString();
   return (
     <TouchableOpacity style={{ flexDirection: 'row', padding: 5, alignItems: 'center' }} key={key} onPress={() => {
       console.log('select', item.ip);
       selectDevice(parseInt(key));
     }}>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[0], alignItems: 'center' }}>
         <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.ip}</Text>
       </View>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[1], alignItems: 'center' }}>
         <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.cams.length}</Text>
       </View>
-      <View style={{ flex: 4, alignItems: 'center' }}>
+      <View style={{ flex: flex[2], alignItems: 'center' }}>
         <Text style={isSelected ? styles.textBold : styles.textNormal}>{item.status.gps.fix ? 'Yes' : 'No'}</Text>
       </View>
-      <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+      <TouchableOpacity style={{ flex: flex[3], alignItems: 'center' }} onPress={() => {
         console.log('do refresh');
         refreshDevice(item.ip);
       }}>
@@ -252,6 +252,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
   const [isError, setIsError] = useState<boolean>(false);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const [stopRequested, setStopRequested] = useState<boolean>(false);
 
   const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
   const [prevGpioCams, setPrevGpioCams] = useState<IGpioCamera[] | null>(null);
@@ -363,6 +364,8 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         setPrevGpioCams(gpioCamsRef.current);
       }, 10000); // this time must be greater than the capture interval
     } else {
+      setIsError(false);
+      setStopRequested(false);
       if (updateExpectedCaptureInterval.current) {
         clearInterval(updateExpectedCaptureInterval.current);
       }
@@ -488,27 +491,29 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.screenView}>
-        {gpioCams.length > 0 && isError && <View style={styles.errorCard}>
+        {gpioCams.length > 0 && isError && !stopRequested && <View style={styles.errorCard}>
           <TouchableOpacity onPress={() => { setIsError(false) }}>
             <Text style={styles.textBold}>Something went wrong! Dismiss?</Text>
           </TouchableOpacity>
         </View>}
-        {gpioCams.length > 0 && isError && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {gpioCams.length > 0 && isError && !stopRequested && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {gpioCams.length > 0 && stopRequested && <View style={{ ...styles.card, alignItems: 'center' }}>
+          <Text style={styles.textBold}>Post processing...</Text>
+        </View>}
+        {gpioCams.length > 0 && stopRequested && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length === 0 ? <View></View> : (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', padding: 5 }}>
               {["Status", "Captured", "Copied", ""].map((item, index) => (
-                renderFixedCols(item, index.toString(), index === 3 ? 1 : 4)
+                renderFixedCols(item, index.toString(), [3, 5, 5, 1][index])
               ))}
             </View>
             <View style={styles.horizontalSpacer}></View>
             {gpioCams.map((item, index) => (
-              renderGpioCam(item, index.toString(), (dev) => {
+              renderGpioCam(item, index.toString(), [3, 5, 5, 1], (dev) => {
                 if (dev.status?.mode === 'STARTED') {
                   Toast.show('Stop capturing...');
-                  if (updateExpectedCaptureInterval.current) {
-                    clearInterval(updateExpectedCaptureInterval.current);
-                  }
+                  setStopRequested(true);
                   stopCapture(dev.ip)
                     .then(res => {
                       const resultString = res.success ? "Stopped" : "Already stopped";
@@ -518,6 +523,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
                 } else {
                   Toast.show('Start capturing...');
                   setIsError(false);
+                  setStopRequested(false);
                   setPrevGpioCams(null);
                   startCapture(dev.ip)
                     .then(res => {
@@ -535,6 +541,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={async () => {
               Toast.show('Start capturing...');
               setIsError(false);
+              setStopRequested(false);
               setPrevGpioCams(null);
               for (const gpioCam of gpioCams) {
                 startCapture(gpioCam.ip).then(() => {
@@ -549,9 +556,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             </TouchableOpacity>
             <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
               Toast.show('Stop capturing...');
-              if (updateExpectedCaptureInterval.current) {
-                clearInterval(updateExpectedCaptureInterval.current);
-              }
+              setStopRequested(true);
               for (const gpioCam of gpioCams) {
                 stopCapture(gpioCam.ip).then(() => console.log('stop req', gpioCam.ip)).catch((e) => console.log(e));
               }
@@ -567,12 +572,12 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'row', padding: 5 }}>
             {["Device", "Cameras", "GPS", ""].map((item, index) => (
-              renderFixedCols(item, index.toString(), index === 3 ? 1 : 4)
+              renderFixedCols(item, index.toString(), [5, 3, 3, 1][index])
             ))}
           </View>
           <View style={styles.horizontalSpacer}></View>
           {gpioCams.map((item, index: number) => (
-            renderSettings(item, index.toString(),
+            renderSettings(item, index.toString(), [5, 3, 3, 1],
               (idx) => {
                 setSelectedIdx(idx);
                 getData(gpioCams[idx].ip).then(() => { }).catch((e) => console.log(e));
