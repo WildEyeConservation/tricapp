@@ -128,3 +128,8 @@ export interface IBackupStatus {
   files_total: number;
   eta_seconds: number | null;
 }
+
+export interface INetbirdStatus {
+  success: boolean;
+  connected: boolean;
+}

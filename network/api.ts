@@ -10,7 +10,8 @@ import {
   IImageCount,
   ILensNumber,
   IReturnStatus,
-  IBackupStatus
+  IBackupStatus,
+  INetbirdStatus
 } from './api_types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-simple-toast';
@@ -20,6 +21,7 @@ import RNBlobUtil from 'react-native-blob-util';
 // const SERVER_IP = 'https://elephants.hopto.org:443';
 const SERVER_IP = 'https://detweb.hopto.org:443';
 const TIMEOUT = 2000;
+const LONG_TIMEOUT = 10000;
 
 // used for slow download tasks
 let lastProgressAt = 0;
@@ -728,6 +730,195 @@ export async function forceDelete(reqIp: string) {
       })
       .catch((err: any) => {
         console.log('forceDelete', err.toString());
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const setNetbirdKey = (reqIp: string, key: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    Promise.race<IReturnStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_key`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            key: key
+          })
+        })
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+              const msgBody = await res.json();
+              if (msgBody.msg) {
+                throw new Error(msgBody.msg);
+              }
+              throw new Error("Bad response from server");
+            } catch (e) {
+              throw e;
+            }
+          } else if (res.status >= 400 && res.status < 600) {
+            throw new Error("Bad response from server");
+          } else {
+            return res.json();
+          }
+        })
+        .then((res: IReturnStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), LONG_TIMEOUT)
+      )
+    ])
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const netbirdConnect = (reqIp: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    Promise.race<IReturnStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_connect`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+              const msgBody = await res.json();
+              if (msgBody.msg) {
+                throw new Error(msgBody.msg);
+              }
+              throw new Error("Bad response from server");
+            } catch (e) {
+              throw e;
+            }
+          } else if (res.status >= 400 && res.status < 600) {
+            throw new Error("Bad response from server");
+          } else {
+            return res.json();
+          }
+        })
+        .then((res: IReturnStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), LONG_TIMEOUT)
+      )
+    ])
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const netbirdDisconnect = (reqIp: string) => {
+  const promise = new Promise<IReturnStatus>((resolve, reject) => {
+    Promise.race<IReturnStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_disconnect`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+              const msgBody = await res.json();
+              if (msgBody.msg) {
+                throw new Error(msgBody.msg);
+              }
+              throw new Error("Bad response from server");
+            } catch (e) {
+              throw e;
+            }
+          } else if (res.status >= 400 && res.status < 600) {
+            throw new Error("Bad response from server");
+          } else {
+            return res.json();
+          }
+        })
+        .then((res: IReturnStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+      .then((res: IReturnStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
+        reject(err);
+      });
+  });
+  return promise;
+}
+
+export const getNetbirdStatus = (reqIp: string) => {
+  const promise = new Promise<INetbirdStatus>((resolve, reject) => {
+    Promise.race<INetbirdStatus>([
+      new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_status`)
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (res.status === 400 && contentType && contentType.indexOf("application/json") !== -1) {
+            try {
+              const msgBody = await res.json();
+              if (msgBody.msg) {
+                throw new Error(msgBody.msg);
+              }
+              throw new Error("Bad response from server");
+            } catch (e) {
+              throw e;
+            }
+          } else if (res.status >= 400 && res.status < 600) {
+            throw new Error("Bad response from server");
+          } else {
+            return res.json();
+          }
+        })
+        .then((res: INetbirdStatus) => {
+          resolve(res);
+        })
+        .catch((err: any) => {
+          reject(err);
+        })),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), TIMEOUT)
+      )
+    ])
+      .then((res: INetbirdStatus) => {
+        resolve(res);
+      })
+      .catch((err: any) => {
         reject(err);
       });
   });

@@ -9,7 +9,8 @@ import {
   TextInput,
   ActivityIndicator,
   Switch,
-  TouchableOpacity
+  TouchableOpacity,
+  ScrollView
 } from 'react-native';
 import { SetupProps } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,10 +36,14 @@ import {
   stopBackup,
   verifyAndDelete,
   forceDelete,
-  getImages
+  getImages,
+  setNetbirdKey,
+  netbirdConnect,
+  netbirdDisconnect,
+  getNetbirdStatus
 } from '../network/api';
 import { getStoredIps, getCaptureInterval } from '../network/async_storage'
-import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus } from '../network/api_types';
+import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus, INetbirdStatus } from '../network/api_types';
 import { setIp, setIps } from '../store/actions/WifiActions';
 import confirm from '../components/Alert';
 import { formatSeconds } from '../components/Utils';
@@ -109,6 +114,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
   const [lastGpsUpdate, setLastGpsUpdate] = useState<number>(0);
   const [backupStatus, setBackupStatus] = useState<IBackupStatus>();
   const [addIpVisible, setAddIpVisible] = useState(false);
+  const [netbirdKey, setNetbirdKeyValue] = useState<string>('');
+  const [netbirdStatus, setNetbirdStatus] = useState<INetbirdStatus | null>(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -189,6 +196,10 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
       getBackupStatus(gpioCams[selectedIdx].ip).then((res) => {
         setBackupStatus(res);
       }).catch((e) => console.log(e));
+      // Fetch netbird status when device is selected
+      getNetbirdStatus(gpioCams[selectedIdx].ip).then((res) => {
+        setNetbirdStatus(res);
+      }).catch((e) => console.log(e));
     }
   }, [gpioCams, selectedIdx]);
 
@@ -261,7 +272,12 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.screenView}>
+      <ScrollView 
+        style={{ width: '100%' }}
+        contentContainerStyle={{ alignItems: 'center', justifyContent: 'flex-start', padding: 2, margin: 2 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {gpioCams.length === 0 ? <View></View> : (
           <View style={styles.card}>
             <View style={{ flexDirection: 'row', padding: 5 }}>
@@ -499,7 +515,147 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             })))}
           </View>
         </View>}
-      </View>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {selectedIdx < gpioCams.length && <View style={styles.card}>
+          <View style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.textNormal}>Netbird Status:</Text>
+              {netbirdStatus && netbirdStatus.connected && (
+                <Text style={[styles.textNormal, { color: 'green', marginLeft: 10 }]}>Connected</Text>
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <TextInput
+                style={[styles.input, { flex: 1, marginRight: 10 }]}
+                value={netbirdKey}
+                onChangeText={setNetbirdKeyValue}
+                placeholder="A9F88EE3-B2ED-4EE6-8B4C-884FC7B4725F"
+                placeholderTextColor="#999"
+              />
+              <MyButton
+                title='Set Key'
+                width={100}
+                onPress={async () => {
+                  if (!netbirdKey.trim()) {
+                    Toast.show('Please enter a netbird key');
+                    return;
+                  }
+                  Toast.show('Setting netbird key...');
+                  try {
+                    const result = await setNetbirdKey(gpioCams[selectedIdx].ip, netbirdKey.trim());
+                    if (result.success) {
+                      Toast.show('Netbird key set successfully');
+                      // Set status based on success
+                      setNetbirdStatus({
+                        success: true,
+                        connected: true,
+                      });
+                    } else {
+                      Toast.show(result.msg || 'Failed to set netbird key');
+                      setNetbirdStatus({
+                        success: false,
+                        connected: false,
+                      });
+                    }
+                  } catch (e) {
+                    console.log('setNetbirdKey failed', e);
+                    Toast.show('Failed to set netbird key');
+                    setNetbirdStatus({
+                      success: false,
+                      connected: false,
+                    });
+                  }
+                }}
+              ></MyButton>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
+              <MyButton
+                title='Connect'
+                width={100}
+                onPress={async () => {
+                  Toast.show('Connecting...');
+                  try {
+                    const result = await netbirdConnect(gpioCams[selectedIdx].ip);
+                    if (result.success) {
+                      if (result.msg) {
+                        Toast.show(result.msg);
+                      } else {
+                        Toast.show('Netbird connected successfully');
+                      }
+                      // Set status based on success
+                      setNetbirdStatus({
+                        success: true,
+                        connected: true,
+                      });
+                    } else {
+                      Toast.show(result.msg || 'Failed to connect netbird');
+                      setNetbirdStatus({
+                        success: false,
+                        connected: false,
+                      });
+                    }
+                  } catch (e) {
+                    console.log('netbirdConnect failed', e);
+                    Toast.show('Failed to connect netbird');
+                    setNetbirdStatus({
+                      success: false,
+                      connected: false,
+                    });
+                  }
+                }}
+              ></MyButton>
+              <View style={{ marginLeft: 10 }}>
+                <MyButton
+                  title='Disconnect'
+                  width={100}
+                  onPress={async () => {
+                    Toast.show('Disconnecting...');
+                    try {
+                      const result = await netbirdDisconnect(gpioCams[selectedIdx].ip);
+                      if (result.success) {
+                        if (result.msg) {
+                          Toast.show(result.msg);
+                        } else {
+                          Toast.show('Netbird disconnected successfully');
+                        }
+                        // Set status based on success
+                        setNetbirdStatus({
+                          success: true,
+                          connected: false,
+                        });
+                      } else {
+                        Toast.show(result.msg || 'Failed to disconnect netbird');
+                        // Keep current status if disconnect failed
+                      }
+                    } catch (e) {
+                      console.log('netbirdDisconnect failed', e);
+                      Toast.show('Failed to disconnect netbird');
+                      // Keep current status on error
+                    }
+                  }}
+                ></MyButton>
+              </View>
+              <View style={{ marginLeft: 10, flexDirection: 'row', alignItems: 'center' }}>
+                <MyButton
+                  title='Status'
+                  width={100}
+                  onPress={async () => {
+                    Toast.show('Checking status...');
+                    try {
+                      const status = await getNetbirdStatus(gpioCams[selectedIdx].ip);
+                      setNetbirdStatus(status);
+                      Toast.show(status.connected ? 'Netbird is connected' : 'Netbird is disconnected');
+                    } catch (e) {
+                      console.log('getNetbirdStatus failed', e);
+                      Toast.show('Failed to get netbird status');
+                    }
+                  }}
+                ></MyButton>
+              </View>
+            </View>
+          </View>
+        </View>}
+      </ScrollView>
       <IPv4Prompt
         visible={addIpVisible}
         initialValue={""}
