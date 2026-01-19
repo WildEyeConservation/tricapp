@@ -14,7 +14,8 @@ import {
   Dimensions,
   Platform,
   NativeModules,
-  TouchableOpacity
+  TouchableOpacity,
+  AppState
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { HomeProps } from '../navigation/types';
@@ -278,6 +279,17 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
 
     }).catch((err) => console.log(err));
 
+    let current = AppState.currentState;
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      // background -> active means your app is visible again
+      if (current.match(/inactive|background/) && next === 'active') {
+        console.log('App resumed / back to foreground');
+        setPrevGpioCams(null);
+      }
+      current = next;
+    });
+
     return () => {
       console.log('onClose');
       if (unsubscribe) {
@@ -287,6 +299,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       clearInterval(getStatusInterval.current);
       clearInterval(hotspotSendInfoInterval);
       clearInterval(updateExpectedCaptureInterval.current);
+      subscription.remove();
     }
   }, []);
 
