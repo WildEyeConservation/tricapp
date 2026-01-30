@@ -238,19 +238,17 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
     return newGpioCams;
   }
 
-  const updateCaptureInterval = async (interval: number) => {
+  const updateCaptureInterval = async (selectedCamIdx: number, interval: number) => {
     const roundedNum = Math.round(interval * 10) / 10;
     try {
-      for (const gpioCam of gpioCams) {
-        await setCaptureInterval(gpioCam.ip, roundedNum).then(() => { }).catch((e) => console.log(e));
-      }
-    } catch (e) {
-      console.log(e)
-    }
-    try {
+      await setCaptureInterval(gpioCams[selectedCamIdx].ip, roundedNum).then(() => { }).catch((e) => console.log(e));
       await AsyncStorage.setItem('@Tricap:captureInterval', roundedNum.toString());
-      const detectedCams = await buildNetwork(ips);
-      setGpioCams(detectedCams);
+      const stats = await getStats(gpioCams[selectedCamIdx].ip);
+      setGpioCams((prev) => {
+        const updateCopy = [...prev]
+        updateCopy[selectedCamIdx] = { ...updateCopy[selectedCamIdx], captureInterval: stats.captureInterval }
+        return updateCopy
+      })
       setNewCaptureInterval(roundedNum);
     } catch (e) {
       console.log(e)
@@ -325,14 +323,14 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               title='-0.5'
               width={50}
               onPress={async () => {
-                updateCaptureInterval(newCaptureInterval - 0.5).then(() => { }).catch((e) => console.log(e));
+                updateCaptureInterval(selectedIdx, newCaptureInterval - 0.5).then(() => { }).catch((e) => console.log(e));
               }}
             ></MyButton>
             <MyButton
               title='-0.1'
               width={50}
               onPress={async () => {
-                updateCaptureInterval(newCaptureInterval - 0.1).then(() => { }).catch((e) => console.log(e));
+                updateCaptureInterval(selectedIdx, newCaptureInterval - 0.1).then(() => { }).catch((e) => console.log(e));
               }}
             ></MyButton>
             <Text style={styles.textNormal}>{newCaptureInterval}s</Text>
@@ -340,14 +338,14 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               title='+0.1'
               width={50}
               onPress={async () => {
-                updateCaptureInterval(newCaptureInterval + 0.1).then(() => { }).catch((e) => console.log(e));
+                updateCaptureInterval(selectedIdx, newCaptureInterval + 0.1).then(() => { }).catch((e) => console.log(e));
               }}
             ></MyButton>
             <MyButton
               title='+0.5'
               width={50}
               onPress={async () => {
-                updateCaptureInterval(newCaptureInterval + 0.5).then(() => { }).catch((e) => console.log(e));
+                updateCaptureInterval(selectedIdx, newCaptureInterval + 0.5).then(() => { }).catch((e) => console.log(e));
               }}
             ></MyButton>
           </View>

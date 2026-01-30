@@ -21,7 +21,7 @@ import RNBlobUtil from 'react-native-blob-util';
 // const SERVER_IP = 'https://elephants.hopto.org:443';
 const SERVER_IP = 'https://detweb.hopto.org:443';
 const TIMEOUT = 2000;
-const LONG_TIMEOUT = 10000;
+const LONG_TIMEOUT = 20000;
 
 // used for slow download tasks
 let lastProgressAt = 0;
