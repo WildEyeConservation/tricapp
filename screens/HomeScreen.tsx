@@ -17,6 +17,15 @@ import {
   TouchableOpacity,
   AppState
 } from 'react-native';
+import Geolocation from 'react-native-geolocation-service';
+import {
+  startGpsWatch,
+  stopGpsWatch,
+  startGpsLogging,
+  stopGpsLogging,
+  setPositionReceivedCallback,
+} from '../network/gps_logger';
+import { GpsStatusContext } from '../navigation/AppNavigations';
 import { useSelector, useDispatch } from 'react-redux';
 import { HomeProps } from '../navigation/types';
 import Toast from 'react-native-simple-toast';
@@ -109,19 +118,8 @@ const requestRuntimePermission = async (permission: Permission) => {
 };
 
 const requestRuntimePermissions = async () => {
-  let permissionState = false;
   try {
-    // while (!permissionState && (Platform.Version >= 29)) {
-    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-    // }
-    // permissionState = false;
-    // while (!permissionState && (Platform.Version >= 29)) {
-    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN);
-    // }
-    // permissionState = false;
-    // while (!permissionState && (Platform.Version >= 29)) {
-    //   permissionState = await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-    // }
+    await requestRuntimePermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
   } catch (err) {
     console.warn(err);
   }
@@ -155,7 +153,9 @@ const renderGpioCam = (item: IGpioCamera, key: string, flex: number[], selectDev
           }}>
           {item.status?.mode === 'STARTED' ?
             <IconCom name="camera-off" size={25} color={'black'} /> :
-            <Icon name="camera-alt" size={25} color={'black'} />}
+            item.status?.mode === 'STOPPED' ?
+            <Icon name="camera-alt" size={25} color={'black'} /> :
+            <Icon name="error" size={25} color={'red'} />}
         </TouchableOpacity>
       </View>
     </View>
@@ -262,8 +262,44 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const gpioCamsRef = useLatest(gpioCams);
   const prevGpioCamsRef = useLatest(prevGpioCams);
 
+  const captureSessionStart = useRef<Date | null>(null);
+  const fixTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { setHasFix, setIsLogging } = React.useContext(GpsStatusContext);
+
   useEffect(() => {
     setStarting(true);
+
+    const startGps = async () => {
+      let permitted = false;
+      if (Platform.OS === 'ios') {
+        const result = await Geolocation.requestAuthorization('whenInUse');
+        permitted = result === 'granted';
+      } else {
+        const result = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'TricApp Location',
+            message: 'Location access is needed to show GPS status and log positions during capture.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        permitted = result === PermissionsAndroid.RESULTS.GRANTED;
+      }
+      if (!permitted) {
+        console.warn('GPS: location permission denied');
+        return;
+      }
+      setPositionReceivedCallback(() => {
+        setHasFix(true);
+        if (fixTimeoutRef.current) clearTimeout(fixTimeoutRef.current);
+        fixTimeoutRef.current = setTimeout(() => setHasFix(false), 2500);
+      });
+      startGpsWatch();
+    };
+
     requestRuntimePermissions().then(() => {
       getStoredIps().then((storedIps) => {
         if (storedIps !== undefined && storedIps.length > 0) {
@@ -275,9 +311,10 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ip)) {
           dispatch(setIp(ip));
         }
-      })
-
+      });
     }).catch((err) => console.log(err));
+
+    startGps().catch((e) => console.warn('GPS watch start failed', e));
 
     let current = AppState.currentState;
 
@@ -300,6 +337,9 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       clearInterval(hotspotSendInfoInterval);
       clearInterval(updateExpectedCaptureInterval.current);
       subscription.remove();
+      stopGpsLogging();
+      stopGpsWatch();
+      if (fixTimeoutRef.current) clearTimeout(fixTimeoutRef.current);
     }
   }, []);
 
@@ -382,6 +422,46 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
       if (updateExpectedCaptureInterval.current) {
         clearInterval(updateExpectedCaptureInterval.current);
       }
+    }
+  }, [isCapturing]);
+
+  useEffect(() => {
+    if (isCapturing) {
+      captureSessionStart.current = new Date();
+      const run = async () => {
+        if (Platform.OS === 'android') {
+          const hasBackground = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+          );
+          if (!hasBackground) {
+            const result = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+              {
+                title: 'TricApp background location',
+                message:
+                  'Allow location access all the time so GPS can be logged to file when the app is in the background during capture.',
+                buttonNeutral: 'Ask Me Later',
+                buttonNegative: 'Cancel',
+                buttonPositive: 'OK',
+              }
+            );
+            if (result !== PermissionsAndroid.RESULTS.GRANTED) {
+              Toast.show('Background location is needed for GPS logging when app is not in focus.', Toast.LONG);
+            }
+          }
+        }
+        try {
+          await startGpsLogging(captureSessionStart.current!);
+          setIsLogging(true);
+        } catch (e) {
+          console.warn('GPS logging start failed', e);
+        }
+      };
+      run();
+    } else {
+      stopGpsLogging();
+      setIsLogging(false);
+      captureSessionStart.current = null;
     }
   }, [isCapturing]);
 
@@ -533,7 +613,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
                       // Toast.show(resultString)
                     })
                     .catch((err) => Toast.show(err.toString()));
-                } else {
+                } else if (dev.status?.mode === 'STOPPED') {
                   Toast.show('Start capturing...');
                   setIsError(false);
                   setStopRequested(false);
@@ -567,7 +647,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
                 <Text style={styles.textNormal}>Start all</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => {
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={!isCapturing} onPress={() => {
               Toast.show('Stop capturing...');
               setStopRequested(true);
               for (const gpioCam of gpioCams) {

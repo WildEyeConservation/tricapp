@@ -883,6 +883,22 @@ export const netbirdDisconnect = (reqIp: string) => {
   return promise;
 }
 
+export async function captureImage(reqIp: string, camIndex: number): Promise<string> {
+  const task = RNBlobUtil
+    .config({ fileCache: true, appendExt: 'jpg' })
+    .fetch('POST', `http://${reqIp}:5000/api/test_capture`,
+      { 'Content-Type': 'application/json' },
+      JSON.stringify({ cam: camIndex })
+    );
+
+  const res = await task;
+  if (res.info().status >= 400) {
+    await RNBlobUtil.fs.unlink(res.path()).catch(() => {});
+    throw new Error(`Capture failed (HTTP ${res.info().status})`);
+  }
+  return res.path();
+}
+
 export const getNetbirdStatus = (reqIp: string) => {
   const promise = new Promise<INetbirdStatus>((resolve, reject) => {
     Promise.race<INetbirdStatus>([
