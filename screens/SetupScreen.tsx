@@ -505,8 +505,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               console.log('index', selectedCamIdx)
               Toast.show('Downloading...');
               try {
-                await getImages(gpioCams[selectedIdx].ip, selectedCamIdx)
-                Toast.show('Download complete');
+                const result = await getImages(gpioCams[selectedIdx].ip, selectedCamIdx);
+                Toast.show(result === 'No images available' ? result : 'Download complete');
               } catch {
                 console.log('download images failed')
               }

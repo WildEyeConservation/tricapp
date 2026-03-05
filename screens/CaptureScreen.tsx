@@ -21,11 +21,15 @@ import { RootState } from '../store/types';
 import { IGpioCamera } from '../network/api_types';
 import { getStatus, getImageCount, captureImage, getPreviewStreamUrl } from '../network/api';
 import { CaptureProps } from '../navigation/types';
+// import RawImageProcessor from '../native/RawImageProcessor.ts';
 import {
   FullScreenImageViewer,
   FullScreenStreamViewer,
   getPreviewStreamHtml,
 } from './fullScreenViewer';
+
+// Once per app session: show short toast when Live preview is first used
+let livePreviewToastShown = false;
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -203,6 +207,19 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
     fetchDevices();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- run detect devices once on mount
 
+  // Short toast once per app session when Live preview is first used
+  useEffect(() => {
+    if (
+      selectedDevice &&
+      selectedCamIdx !== null &&
+      selectedDevice.status.cams.length > 0 &&
+      !livePreviewToastShown
+    ) {
+      livePreviewToastShown = true;
+      Toast.show('Live preview stops after 2 min', Toast.SHORT);
+    }
+  }, [selectedDevice, selectedCamIdx]);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -250,6 +267,34 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
       });
       const uri = result.fileCopyUri ?? result.uri;
       setDisplayUri(uri);
+
+
+      // const pickedUri = result.fileCopyUri ?? result.uri;
+      // const displayName = result.name ?? pickedUri;
+      // const isArw =
+      //   typeof displayName === 'string' ? /\.arw$/i.test(displayName) : /\.arw$/i.test(pickedUri);
+
+      // let finalUri = pickedUri;
+
+      // if (isArw) {
+      //   // We want to avoid platform decoders (which will demosaic the ARW).
+      //   // Instead, hand the file path to a native RawImageProcessor that reads
+      //   // the ARW and writes out an undemosaiced Bayer-plane PNG for viewing.
+      //   const filePath = pickedUri.startsWith('file://')
+      //     ? pickedUri.replace('file://', '')
+      //     : pickedUri;
+      //   try {
+      //     const pngPath = await RawImageProcessor.convertArwToPng(filePath);
+      //     finalUri = `file://${pngPath}`;
+      //   } catch (err: any) {
+      //     Toast.show(
+      //       `Could not convert ARW to RAW preview: ${err?.message ?? err}`,
+      //       Toast.LONG,
+      //     );
+      //   }
+      // }
+
+      // setDisplayUri(finalUri);
       setViewerOpen(true);
     } catch (e: any) {
       if (!DocumentPicker.isCancel(e)) {

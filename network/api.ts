@@ -72,7 +72,7 @@ export const getStatus = (reqIp: string) => {
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/status`)
         .then(res => res.json())
         .then((res: IStatus) => {
-          console.log('getStatus', res)
+          // console.log('getStatus', res)
           resolve(res);
         })
         .catch((err: any) => {
@@ -475,9 +475,21 @@ export const getImages = async (reqIp: string, cameraIndex: number) => {
       }
     });
 
-  const res = await task;
-  console.log('Saved to:', res.path(), 'status:', res.info().status);
-  return res.path();
+  try {
+    const res = await task;
+    const status = res.info().status;
+    if (status === 404) {
+      return 'No images available';
+    }
+    console.log('Saved to:', res.path(), 'status:', status);
+    return res.path();
+  } catch (err: any) {
+    const status = err?.response?.status ?? err?.status;
+    if (status === 404 || (err?.message && String(err.message).includes('404'))) {
+      return 'No images available';
+    }
+    throw err;
+  }
 }
 
 export const startCapture = (reqIp: string) => {

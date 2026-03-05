@@ -32,15 +32,6 @@ const formatSessionTimestamp = (date: Date): string => {
   );
 };
 
-const formatGpsTimestamp = (timestampMs: number): string => {
-  const d = new Date(timestampMs);
-  const hh = pad(d.getUTCHours());
-  const mm = pad(d.getUTCMinutes());
-  const ss = pad(d.getUTCSeconds());
-  const cs = pad(Math.floor(d.getUTCMilliseconds() / 10));
-  return `${hh}${mm}${ss}.${cs}`;
-};
-
 const positionToCsvRow = (pos: GeoPosition): string => {
   const { latitude, longitude, altitude, accuracy } = pos.coords;
 
@@ -50,7 +41,7 @@ const positionToCsvRow = (pos: GeoPosition): string => {
   const ew = longitude >= 0 ? 'E' : 'W';
 
   const quality = 1;
-  const gpsTimestamp = formatGpsTimestamp(pos.timestamp);
+  const gpsTimestamp = pos.timestamp.toString();
   const alt = altitude != null ? altitude.toFixed(3) : '0.000';
   // accuracy is horizontal accuracy in metres; closest available equivalent to HDOP
   const hdop = accuracy != null ? accuracy.toFixed(2) : '';

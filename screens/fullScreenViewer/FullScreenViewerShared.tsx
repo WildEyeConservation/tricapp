@@ -107,6 +107,10 @@ export function useZoomPanGesture(
   widthRef: MutableRefObject<number>,
   heightRef: MutableRefObject<number>,
   rotationRef?: MutableRefObject<number>,
+  /** Minimum allowed scale (e.g. fitScale for image viewer). Defaults to MIN_Z. */
+  minZoomRef?: MutableRefObject<number>,
+  /** Scale to animate to on double-tap zoom-in. Defaults to 3. */
+  doubleTapZoomRef?: MutableRefObject<number>,
 ): {
   scaleAnim: Animated.Value;
   txAnim: Animated.Value;
@@ -208,10 +212,11 @@ export function useZoomPanGesture(
         g.dtLastTime = 0;
         const tapX = t[0]?.pageX ?? W / 2;
         const tapY = t[0]?.pageY ?? H / 2;
-        if (g.scale > 1.05) {
-          setTransformRef.current(1, 0, 0);
+        const minZ = minZoomRef?.current ?? MIN_Z;
+        if (g.scale > minZ * 1.05) {
+          animateToRef.current(minZ, 0, 0);
         } else {
-          const tz = 3,
+          const tz = doubleTapZoomRef?.current ?? 3,
             z0 = g.scale,
             tx0 = g.tx,
             ty0 = g.ty;
@@ -250,7 +255,7 @@ export function useZoomPanGesture(
       const dy = t[0].pageY - t[1].pageY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const newScale = Math.min(
-        Math.max(g.pinchInitScale * (dist / g.pinchInitDist), MIN_Z),
+        Math.max(g.pinchInitScale * (dist / g.pinchInitDist), minZoomRef?.current ?? MIN_Z),
         MAX_Z,
       );
       const rScale = newScale / g.pinchInitScale;
@@ -286,7 +291,8 @@ export function useZoomPanGesture(
     }
     g.pinchActive = false;
     g.panActive = false;
-    if (g.scale < MIN_Z) setTransformRef.current(MIN_Z, 0, 0);
+    const minZ = minZoomRef?.current ?? MIN_Z;
+    if (g.scale < minZ) setTransformRef.current(minZ, 0, 0);
   }).current;
 
   const onTerminate = useRef(() => {
