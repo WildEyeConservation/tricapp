@@ -25,7 +25,7 @@ import {
   stopGpsLogging,
   setPositionReceivedCallback,
 } from '../network/gps_logger';
-import { GpsStatusContext } from '../navigation/AppNavigations';
+import { GpsStatusContext, CaptureStatusContext } from '../navigation/AppNavigations';
 import { useSelector, useDispatch } from 'react-redux';
 import { HomeProps } from '../navigation/types';
 import Toast from 'react-native-simple-toast';
@@ -251,9 +251,10 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const [samplePeriodS, setSamplePeriodS] = useState(0);
   const [lensNumber, setLensNumber] = useState('');
   const [selectedIdx, setSelectedIdx] = useState<number>(0);
-  const [isError, setIsError] = useState<boolean>(false);
-  const [isCapturing, setIsCapturing] = useState<boolean>(false);
+  const { isError, setIsError, isCapturing, setIsCapturing } = React.useContext(CaptureStatusContext);
   const [stopRequested, setStopRequested] = useState<boolean>(false);
+  const [postProcessingDots, setPostProcessingDots] = useState(0);
+  const [postProcessingSeconds, setPostProcessingSeconds] = useState(0);
 
   const [gpioCams, setGpioCams] = useState<IGpioCamera[]>([]);
   const [prevGpioCams, setPrevGpioCams] = useState<IGpioCamera[] | null>(null);
@@ -266,6 +267,19 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   const fixTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { setHasFix, setIsLogging } = React.useContext(GpsStatusContext);
+
+  useEffect(() => {
+    if (!stopRequested) {
+      setPostProcessingDots(0);
+      setPostProcessingSeconds(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setPostProcessingDots((n) => (n + 1) % 4);
+      setPostProcessingSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [stopRequested]);
 
   useEffect(() => {
     setStarting(true);
@@ -345,6 +359,9 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
 
   useFocusEffect(
     useCallback(() => {
+      // Reset possible error condition when entering Home (same as app resume)
+      setPrevGpioCams(null);
+
       if (getStatusInterval.current) {
         clearInterval(getStatusInterval.current);
       }
@@ -591,7 +608,7 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         </View>}
         {gpioCams.length > 0 && isError && !stopRequested && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length > 0 && stopRequested && <View style={{ ...styles.card, alignItems: 'center' }}>
-          <Text style={styles.textBold}>Post processing...</Text>
+          <Text style={styles.textBold}>Post processing{'.'.repeat(postProcessingDots)} ({postProcessingSeconds}s)</Text>
         </View>}
         {gpioCams.length > 0 && stopRequested && <View style={styles.horizontalSpacerWithMargin}></View>}
         {gpioCams.length === 0 ? <View></View> : (

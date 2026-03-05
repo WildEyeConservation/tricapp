@@ -216,7 +216,7 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
       !livePreviewToastShown
     ) {
       livePreviewToastShown = true;
-      Toast.show('Live preview stops after 2 min', Toast.SHORT);
+      Toast.show('Live preview stops after 5 min', Toast.SHORT);
     }
   }, [selectedDevice, selectedCamIdx]);
 

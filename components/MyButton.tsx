@@ -18,7 +18,9 @@ const MyButton = (props: MyButtonProps) => {
   return (
     <TouchableOpacity onPress={onPress} style={{
       ...styles.button,
-      backgroundColor: disabled ? 'grey' : 'blue',
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: disabled ? 'grey' : 'green',
       width: width ? width : styles.button.width
     }} disabled={disabled}>
       <Text style={styles.text}>{title}</Text>
@@ -35,7 +37,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   text: {
-    color: 'white'
+    color: 'black'
   }
 })
 

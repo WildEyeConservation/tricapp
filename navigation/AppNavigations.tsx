@@ -55,6 +55,26 @@ export const GpsStatusContext = createContext<GpsStatusContextType>({
 });
 
 // ---------------------------------------------------------------------------
+// Capture status context – header color: green when capturing, red when error
+// ---------------------------------------------------------------------------
+export interface CaptureStatusContextType {
+  isCapturing: boolean;
+  isError: boolean;
+  setIsCapturing: (v: boolean) => void;
+  setIsError: (v: boolean) => void;
+}
+export const CaptureStatusContext = createContext<CaptureStatusContextType>({
+  isCapturing: false,
+  isError: false,
+  setIsCapturing: () => {},
+  setIsError: () => {},
+});
+
+const HEADER_GREEN = '#1C463C';
+const HEADER_RED = '#C62828';
+const HEADER_DEFAULT = '#f5f5f5';
+
+// ---------------------------------------------------------------------------
 // Drawer content – mirrors what AboutScreen used to show
 // ---------------------------------------------------------------------------
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -275,8 +295,13 @@ const CaptureStack = createNativeStackNavigator<RootStackParamList>();
 const HomeNav = ({ navigation }: HomeProps) => {
   const { openDrawer } = useContext(DrawerContext);
   const { hasFix, isLogging } = useContext(GpsStatusContext);
+  const { isCapturing, isError } = useContext(CaptureStatusContext);
+  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
   return (
-    <HomeStack.Navigator initialRouteName="HomeStack" screenOptions={{ headerShown: true }}>
+    <HomeStack.Navigator
+      initialRouteName="HomeStack"
+      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+    >
       <HomeStack.Screen
         name="HomeStack"
         component={HomeScreen}
@@ -314,8 +339,12 @@ const HomeNav = ({ navigation }: HomeProps) => {
 
 const CaptureNav = ({ navigation }: CaptureProps) => {
   const { openDrawer } = useContext(DrawerContext);
+  const { isCapturing, isError } = useContext(CaptureStatusContext);
+  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
   return (
-    <CaptureStack.Navigator screenOptions={{ headerShown: true }}>
+    <CaptureStack.Navigator
+      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+    >
       <CaptureStack.Screen
         name="CaptureStack"
         component={CaptureScreen}
@@ -338,8 +367,12 @@ const CaptureNav = ({ navigation }: CaptureProps) => {
 
 const SetupNav = ({ navigation }: SetupProps) => {
   const { openDrawer } = useContext(DrawerContext);
+  const { isCapturing, isError } = useContext(CaptureStatusContext);
+  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
   return (
-    <SetupStack.Navigator screenOptions={{ headerShown: true }}>
+    <SetupStack.Navigator
+      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+    >
       <SetupStack.Screen
         name="SetupStack"
         component={SetupScreen}
@@ -370,7 +403,7 @@ const TabNav = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        // tabBarActiveTintColor: '#2196F3',
+        tabBarActiveTintColor: '#1C463C',
         tabBarInactiveTintColor: 'black',
       }}
     >
@@ -406,6 +439,8 @@ const AppNav = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [hasFix, setHasFix] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isError, setIsError] = useState(false);
 
   return (
     <DrawerContext.Provider
@@ -415,10 +450,14 @@ const AppNav = () => {
       }}
     >
       <GpsStatusContext.Provider value={{ hasFix, isLogging, setHasFix, setIsLogging }}>
-        <View style={{ flex: 1 }}>
-          <TabNav />
-          <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
-        </View>
+        <CaptureStatusContext.Provider
+          value={{ isCapturing, isError, setIsCapturing, setIsError }}
+        >
+          <View style={{ flex: 1 }}>
+            <TabNav />
+            <AppDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
+          </View>
+        </CaptureStatusContext.Provider>
       </GpsStatusContext.Provider>
     </DrawerContext.Provider>
   );

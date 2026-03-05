@@ -27,6 +27,21 @@ const LONG_TIMEOUT = 20000;
 let lastProgressAt = 0;
 const TOAST_PROGRESS_EVERY_MS = 2000;
 
+/** Show a simple toast when a request fails (e.g. server returns 400 with { msg: '...' }). */
+function showErrorToast(err: any): void {
+  const msg = err?.message ?? (err != null ? String(err) : 'Request failed');
+  Toast.show(msg, Toast.LONG);
+}
+
+/** Parse JSON and throw with body.msg when res.ok is false (e.g. 400 with { msg: '...' }). */
+async function parseJsonOrThrow(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type');
+  const isJson = contentType?.includes('application/json');
+  const data = isJson ? await res.json() : {};
+  if (!res.ok) throw new Error(data.msg || `Request failed (${res.status})`);
+  return data;
+}
+
 let syncing = false;
 export const syncExif = async (ip: string) => {
   const netInfo = await NetInfo.fetch();
@@ -57,7 +72,7 @@ export const unsubscribe = NetInfo.addEventListener((state) => {
       // the event listener calls this 3 times -> avoid by checking bool status
       syncing = true;
       syncExif('').then(() => { syncing = false; }).catch((err) => {
-        console.log(err.toString());
+        showErrorToast(err);
         syncing = false;
       });
     }
@@ -67,10 +82,11 @@ export const unsubscribe = NetInfo.addEventListener((state) => {
 });
 
 export const getStatus = (reqIp: string) => {
+  // console.log('getStatus', reqIp);
   const promise = new Promise<IStatus>((resolve, reject) => {
     Promise.race<IStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/status`)
-        .then(res => res.json())
+        .then(res => parseJsonOrThrow(res))
         .then((res: IStatus) => {
           // console.log('getStatus', res)
           resolve(res);
@@ -93,10 +109,11 @@ export const getStatus = (reqIp: string) => {
 }
 
 export const getStats = (reqIp: string) => {
+  console.log('getStats', reqIp);
   const promise = new Promise<IStats>((resolve, reject) => {
     Promise.race<IStats>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/statistics`)
-        .then(res => res.json())
+        .then(res => parseJsonOrThrow(res))
         .then((res: IStats) => {
           resolve(res);
         })
@@ -118,6 +135,7 @@ export const getStats = (reqIp: string) => {
 }
 
 export const getCopyEta = (reqIp: string) => {
+  console.log('getCopyEta', reqIp);
   const promise = new Promise<ICopyEta>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/copy_eta`).then(async res => {
       const contentType = res.headers.get("content-type");
@@ -141,7 +159,7 @@ export const getCopyEta = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('getCopyEta', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -149,6 +167,7 @@ export const getCopyEta = (reqIp: string) => {
 }
 
 export const getExifSessions = (reqIp: string, sessionIds: IExifSessionIds) => {
+  console.log('getExifSessions', reqIp);
   const promise = new Promise<IExifSessions>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/exif_info`,
       {
@@ -179,7 +198,7 @@ export const getExifSessions = (reqIp: string, sessionIds: IExifSessionIds) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('getExifSessions', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -188,6 +207,7 @@ export const getExifSessions = (reqIp: string, sessionIds: IExifSessionIds) => {
 }
 
 export const getExifSessionIds = (reqIp: string) => {
+  console.log('getExifSessionIds', reqIp);
   const promise = new Promise<IExifSessionIds>((resolve, reject) => {
     fetch(`http://${reqIp}:5000/api/exif_sessions`).then(async res => {
       const contentType = res.headers.get("content-type");
@@ -212,7 +232,7 @@ export const getExifSessionIds = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('getExifSessionIds', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -270,14 +290,14 @@ export const sendExifSessionIds = (data: IExifSessionIds) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       })
-      .then(res => res.json())
+      .then(res => parseJsonOrThrow(res))
       .then((res: IExifSessionIds) => {
         console.log(res);
         clearTimeout(timeoutId);
         resolve(res);
       })
       .catch((err) => {
-        console.log('sendExifSessionIds', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -285,10 +305,11 @@ export const sendExifSessionIds = (data: IExifSessionIds) => {
 }
 
 export const getImageCount = (reqIp: string) => {
+  // console.log('getImageCount', reqIp);
   const promise = new Promise<IImageCount>((resolve, reject) => {
     Promise.race<IImageCount>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/images_captured`)
-        .then(res => res.json())
+        .then(res => parseJsonOrThrow(res))
         .then((res: IImageCount) => {
           resolve(res);
         })
@@ -394,14 +415,15 @@ const syncFromLocalStorage = async (netInfo: NetInfoState) => {
 }
 
 export const getLensNumber = (reqIp: string) => {
+  console.log('getLensNumber', reqIp);
   const promise = new Promise<ILensNumber>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/lensNumber`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/lensNumber`).then(res => parseJsonOrThrow(res))
       .then((res: ILensNumber) => {
         console.log(res);
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('getLensNumber', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -409,13 +431,14 @@ export const getLensNumber = (reqIp: string) => {
 }
 
 export const restartService = (reqIp: string) => {
+  console.log('restartService', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/restart`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/restart`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('restartService', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -423,13 +446,14 @@ export const restartService = (reqIp: string) => {
 }
 
 export const rebootPi = (reqIp: string) => {
+  console.log('rebootPi', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/reboot`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/reboot`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('rebootPi', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -437,13 +461,14 @@ export const rebootPi = (reqIp: string) => {
 }
 
 export const doPreview = (reqIp: string) => {
+  console.log('doPreview', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/do_preview`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/do_preview`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('doPreview', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -451,6 +476,7 @@ export const doPreview = (reqIp: string) => {
 }
 
 export const getImages = async (reqIp: string, cameraIndex: number) => {
+  console.log('getImages', reqIp, cameraIndex);
   const now = new Date();
   const pad = (n: number) => n.toString().padStart(2, '0');
   const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -488,13 +514,15 @@ export const getImages = async (reqIp: string, cameraIndex: number) => {
     if (status === 404 || (err?.message && String(err.message).includes('404'))) {
       return 'No images available';
     }
+    showErrorToast(err);
     throw err;
   }
 }
 
 export const startCapture = (reqIp: string) => {
+  console.log('startCapture', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/start_capture`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/start_capture`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         if (res.msg) {
           Toast.show(res.msg);
@@ -502,7 +530,7 @@ export const startCapture = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('startCapture', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -510,8 +538,9 @@ export const startCapture = (reqIp: string) => {
 }
 
 export const stopCapture = (reqIp: string) => {
+  console.log('stopCapture', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/stop_capture`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/stop_capture`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         if (res.msg) {
           Toast.show(res.msg);
@@ -519,7 +548,7 @@ export const stopCapture = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('stopCapture', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -527,6 +556,7 @@ export const stopCapture = (reqIp: string) => {
 }
 
 export const setCaptureInterval = (reqIp: string, interval: number) => {
+  console.log('setCaptureInterval', reqIp, interval);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     Promise.race<IReturnStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/capture_interval`,
@@ -560,8 +590,9 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
         .then((res: IReturnStatus) => {
           resolve(res);
         })
-        .catch((err: any) => {
-          reject(err);
+.catch((err: any) => {
+        showErrorToast(err);
+        reject(err);
         })),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), TIMEOUT)
@@ -571,6 +602,7 @@ export const setCaptureInterval = (reqIp: string, interval: number) => {
         resolve(res);
       })
       .catch((err: any) => {
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -610,9 +642,14 @@ export async function downloadLogs(reqIp: string) {
       }
     });
 
-  const res = await task;
-  console.log('Saved to:', res.path(), 'status:', res.info().status);
-  return res.path();
+  try {
+    const res = await task;
+    console.log('Saved to:', res.path(), 'status:', res.info().status);
+    return res.path();
+  } catch (err: any) {
+    showErrorToast(err);
+    throw err;
+  }
 }
 
 export async function downloadImuLogs(reqIp: string) {
@@ -640,9 +677,14 @@ export async function downloadImuLogs(reqIp: string) {
       }
     });
 
-  const res = await task;
-  console.log('Saved to:', res.path(), 'status:', res.info().status);
-  return res.path();
+  try {
+    const res = await task;
+    console.log('Saved to:', res.path(), 'status:', res.info().status);
+    return res.path();
+  } catch (err: any) {
+    showErrorToast(err);
+    throw err;
+  }
 }
 
 export async function downloadGpsLogs(reqIp: string) {
@@ -670,19 +712,25 @@ export async function downloadGpsLogs(reqIp: string) {
       }
     });
 
-  const res = await task;
-  console.log('Saved to:', res.path(), 'status:', res.info().status);
-  return res.path();
+  try {
+    const res = await task;
+    console.log('Saved to:', res.path(), 'status:', res.info().status);
+    return res.path();
+  } catch (err: any) {
+    showErrorToast(err);
+    throw err;
+  }
 }
 
 export async function startBackup(reqIp: string) {
+  console.log('startBackup', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/backup_start`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/backup_start`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('startBackup', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -690,14 +738,13 @@ export async function startBackup(reqIp: string) {
 }
 
 export async function getBackupStatus(reqIp: string) {
+  console.log('getBackupStatus', reqIp);
   const promise = new Promise<IBackupStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/backup_status`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/backup_status`).then(res => parseJsonOrThrow(res))
       .then((res: IBackupStatus) => {
-        console.log('getBackupStatus', res)
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('getBackupStatus', err.toString());
         reject(err);
       });
   });
@@ -705,13 +752,14 @@ export async function getBackupStatus(reqIp: string) {
 }
 
 export async function stopBackup(reqIp: string) {
+  console.log('stopBackup', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/backup_stop`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/backup_stop`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('stopBackup', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -719,14 +767,15 @@ export async function stopBackup(reqIp: string) {
 }
 
 export async function verifyAndDelete(reqIp: string) {
+  console.log('verifyAndDelete', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/verify_and_delete`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/verify_and_delete`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         console.log('verifyAndDelete', res)
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('verifyAndDelete', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -734,14 +783,15 @@ export async function verifyAndDelete(reqIp: string) {
 }
 
 export async function forceDelete(reqIp: string) {
+  console.log('forceDelete', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
-    fetch(`http://${reqIp}:5000/api/force_delete`).then(res => res.json())
+    fetch(`http://${reqIp}:5000/api/force_delete`).then(res => parseJsonOrThrow(res))
       .then((res: IReturnStatus) => {
         console.log('forceDelete', res)
         resolve(res);
       })
       .catch((err: any) => {
-        console.log('forceDelete', err.toString());
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -749,6 +799,7 @@ export async function forceDelete(reqIp: string) {
 }
 
 export const setNetbirdKey = (reqIp: string, key: string) => {
+  console.log('setNetbirdKey', reqIp, key);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     Promise.race<IReturnStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_key`,
@@ -783,6 +834,7 @@ export const setNetbirdKey = (reqIp: string, key: string) => {
           resolve(res);
         })
         .catch((err: any) => {
+          showErrorToast(err);
           reject(err);
         })),
       new Promise((_, reject) =>
@@ -793,6 +845,7 @@ export const setNetbirdKey = (reqIp: string, key: string) => {
         resolve(res);
       })
       .catch((err: any) => {
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -800,6 +853,7 @@ export const setNetbirdKey = (reqIp: string, key: string) => {
 }
 
 export const netbirdConnect = (reqIp: string) => {
+  console.log('netbirdConnect', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     Promise.race<IReturnStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_connect`,
@@ -831,6 +885,7 @@ export const netbirdConnect = (reqIp: string) => {
           resolve(res);
         })
         .catch((err: any) => {
+          showErrorToast(err);
           reject(err);
         })),
       new Promise((_, reject) =>
@@ -841,6 +896,7 @@ export const netbirdConnect = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -848,6 +904,7 @@ export const netbirdConnect = (reqIp: string) => {
 }
 
 export const netbirdDisconnect = (reqIp: string) => {
+  console.log('netbirdDisconnect', reqIp);
   const promise = new Promise<IReturnStatus>((resolve, reject) => {
     Promise.race<IReturnStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_disconnect`,
@@ -879,6 +936,7 @@ export const netbirdDisconnect = (reqIp: string) => {
           resolve(res);
         })
         .catch((err: any) => {
+          showErrorToast(err);
           reject(err);
         })),
       new Promise((_, reject) =>
@@ -889,6 +947,7 @@ export const netbirdDisconnect = (reqIp: string) => {
         resolve(res);
       })
       .catch((err: any) => {
+        showErrorToast(err);
         reject(err);
       });
   });
@@ -904,6 +963,7 @@ export function getPreviewStreamUrl(reqIp: string, cameraIndex: number): string 
 }
 
 export async function captureImage(reqIp: string, camIndex: number): Promise<string> {
+  console.log('captureImage', reqIp, camIndex);
   const task = RNBlobUtil
     .config({ fileCache: true, appendExt: 'jpg' })
     .fetch('POST', `http://${reqIp}:5000/api/test_capture`,
@@ -914,12 +974,15 @@ export async function captureImage(reqIp: string, camIndex: number): Promise<str
   const res = await task;
   if (res.info().status >= 400) {
     await RNBlobUtil.fs.unlink(res.path()).catch(() => {});
-    throw new Error(`Capture failed (HTTP ${res.info().status})`);
+    const err = new Error(`Capture failed (HTTP ${res.info().status})`);
+    showErrorToast(err);
+    throw err;
   }
   return res.path();
 }
 
 export const getNetbirdStatus = (reqIp: string) => {
+  console.log('getNetbirdStatus', reqIp);
   const promise = new Promise<INetbirdStatus>((resolve, reject) => {
     Promise.race<INetbirdStatus>([
       new Promise((resolve, reject) => fetch(`http://${reqIp}:5000/api/netbird_status`)

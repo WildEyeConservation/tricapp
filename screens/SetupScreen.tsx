@@ -154,7 +154,17 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                 setLastGpsUpdate(999)
               }
             }
-          }).catch((e) => { console.log(e); setLastGpsUpdate((val) => Math.min(val + 2, 999)) });
+          }).catch((e) => {
+            console.log(e);
+            setLastGpsUpdate((val) => Math.min(val + 2, 999));
+            setPiStatus({
+              mode: 'OFFLINE',
+              cams: [],
+              camError: false,
+              gps: { fix: false, satellites: 0, pdop: 0, max: 0, min: 0, avg: 0, lastUpdate: 0 },
+              wifiSignal: 0,
+            });
+          });
         }
       };
 
@@ -183,7 +193,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           setNewCaptureInterval(floatInterval);
         }
       }
-    });
+    }).catch((e) => console.log(e));
   }, []);
 
   useEffect(() => {
@@ -255,6 +265,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
     }
   }
 
+  const hideFromSetInterval = (piStatus?.mode === 'STARTED') || !piStatus || piStatus.mode === 'OFFLINE';
+
   if (gpioCams.length === 0 && !addIpVisible) {
     return (
       <SafeAreaView style={styles.screen}>
@@ -316,7 +328,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
           </View>
         </View>}
         {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {gpioCams.length > 0 && <View style={styles.card}>
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Set interval:</Text>
             <MyButton
@@ -350,8 +362,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             ></MyButton>
           </View>
         </View>}
-        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {selectedIdx < gpioCams.length && <View style={styles.card}>
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {selectedIdx < gpioCams.length && !hideFromSetInterval && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Download logs:</Text>
             <MyButton
@@ -402,23 +414,27 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             <MyButton
               title='Tricap service'
               width={120}
-              onPress={() => {
-                Toast.show('Restarting...');
-                restartService(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+              onPress={async () => {
+                if (await confirm('Restart Tricap service?', 'The capture service will restart. Continue?', { confirmText: 'Restart' })) {
+                  Toast.show('Restarting...');
+                  restartService(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+                }
               }}
             ></MyButton>
             <MyButton
               title='Raspberry pi'
               width={120}
-              onPress={() => {
-                Toast.show('Rebooting...');
-                rebootPi(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+              onPress={async () => {
+                if (await confirm('Restart Raspberry Pi?', 'The device will reboot. This may take a minute. Continue?', { destructive: true, confirmText: 'Reboot' })) {
+                  Toast.show('Rebooting...');
+                  rebootPi(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
+                }
               }}
             ></MyButton>
           </View>
         </View>}
-        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {gpioCams.length > 0 && <View style={styles.card}>
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Backup:</Text>
             {backupStatus && <Text style={styles.textNormal}>{backupStatus?.message}</Text>}
@@ -430,11 +446,6 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
               onPress={() => {
                 if ((backupStatus === undefined) || (backupStatus.running === false)) {
                   Toast.show('Starting...');
-                  startBackup(gpioCams[selectedIdx].ip).then((res) => {
-                    if (res.msg) {
-                      Toast.show(res.msg);
-                    }
-                  }).then((e) => console.log(e))
                   setBackupStatus({
                     running: true,
                     phase: "idle",
@@ -445,7 +456,16 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                     files_done: 0,
                     files_total: 0,
                     eta_seconds: null,
-                  })
+                  });
+                  startBackup(gpioCams[selectedIdx].ip)
+                    .then((res) => {
+                      if (res.msg) {
+                        Toast.show(res.msg);
+                      }
+                    })
+                    .catch(() => {
+                      setBackupStatus(undefined);
+                    });
                 } else {
                   Toast.show('Stopping...');
                   stopBackup(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e));
@@ -468,7 +488,12 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                         forceDelete(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e))
                       }
                     }
-                  }).catch((e) => console.log(e));
+                  }).catch(async () => {
+                    if (await confirm('Backup not verified', 'Delete anyway?', { destructive: true, confirmText: 'Delete' })) {
+                      Toast.show('Deleting...');
+                      forceDelete(gpioCams[selectedIdx].ip).then((res) => { }).catch((e) => console.log(e))
+                    }
+                  });
                 }
               }}
             ></MyButton>}
@@ -496,8 +521,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             </View>
           </View>}
         </View>}
-        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {selectedIdx < gpioCams.length && piStatus && <View style={styles.card}>
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {selectedIdx < gpioCams.length && piStatus && !hideFromSetInterval && <View style={styles.card}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={styles.textNormal}>Download images:</Text>
             {/* <View style={{ flexDirection: 'row', width: '100%' }}> */}
@@ -513,8 +538,8 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             })))}
           </View>
         </View>}
-        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {selectedIdx < gpioCams.length && <View style={styles.card}>
+        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {selectedIdx < gpioCams.length && !hideFromSetInterval && <View style={styles.card}>
           <View style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={styles.textNormal}>Netbird Status:</Text>

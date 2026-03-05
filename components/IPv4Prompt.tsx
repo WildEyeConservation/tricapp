@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: "#0a84ff",
+    backgroundColor: "#1C463C",
   },
   btnDisabled: { opacity: 0.5 },
   btnPrimaryText: { fontSize: 16, color: "white", fontWeight: "600" },
