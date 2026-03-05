@@ -883,6 +883,14 @@ export const netbirdDisconnect = (reqIp: string) => {
   return promise;
 }
 
+/**
+ * URL for live preview MJPEG stream of the given camera on the device.
+ * Backend must serve GET /api/stream/<cameraIndex> as multipart/x-mixed-replace (MJPEG).
+ */
+export function getPreviewStreamUrl(reqIp: string, cameraIndex: number): string {
+  return `http://${reqIp}:5000/api/stream/${cameraIndex}`;
+}
+
 export async function captureImage(reqIp: string, camIndex: number): Promise<string> {
   const task = RNBlobUtil
     .config({ fileCache: true, appendExt: 'jpg' })

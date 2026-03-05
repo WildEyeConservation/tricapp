@@ -155,7 +155,7 @@ const renderGpioCam = (item: IGpioCamera, key: string, flex: number[], selectDev
             <IconCom name="camera-off" size={25} color={'black'} /> :
             item.status?.mode === 'STOPPED' ?
             <Icon name="camera-alt" size={25} color={'black'} /> :
-            <Icon name="error" size={25} color={'red'} />}
+            <Icon name="error" size={22} color={'red'} />}
         </TouchableOpacity>
       </View>
     </View>

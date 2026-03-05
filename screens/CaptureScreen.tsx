@@ -7,11 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
-  Dimensions,
   Image,
-  Modal,
-  StatusBar,
-  Animated,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -19,13 +15,17 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconCom from 'react-native-vector-icons/MaterialCommunityIcons';
 import Toast from 'react-native-simple-toast';
 import DocumentPicker from 'react-native-document-picker';
+import { WebView } from 'react-native-webview';
 
 import { RootState } from '../store/types';
 import { IGpioCamera } from '../network/api_types';
-import { getStatus, getImageCount, captureImage } from '../network/api';
+import { getStatus, getImageCount, captureImage, getPreviewStreamUrl } from '../network/api';
 import { CaptureProps } from '../navigation/types';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+import {
+  FullScreenImageViewer,
+  FullScreenStreamViewer,
+  getPreviewStreamHtml,
+} from './fullScreenViewer';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -88,9 +88,9 @@ const renderCameraRow = (
 const CaptureLoader = ({ elapsedSec }: { elapsedSec: number }) => {
   const dots = '.'.repeat((Math.floor(elapsedSec) % 3) + 1);
   const statusText =
-    elapsedSec < 5
+    elapsedSec < 3
       ? 'Sending capture command'
-      : elapsedSec < 15
+      : elapsedSec < 10
       ? 'Processing\u2026'
       : 'Downloading image data\u2026';
 
@@ -119,265 +119,6 @@ const CaptureLoader = ({ elapsedSec }: { elapsedSec: number }) => {
 };
 
 // ---------------------------------------------------------------------------
-// Full-screen zoomable image viewer
-//
-// Uses the raw React Native responder API instead of PanResponder so that
-// e.nativeEvent.touches in onResponderMove is guaranteed to contain ALL
-// currently active touches (PanResponder's synthetic layer can lose the
-// second touch in some RN versions).
-//
-// Transform model: translate(tx, ty) applied AFTER scale, both around center.
-//   screen_x = W/2 + tx + localX * zoom
-//   screen_y = H/2 + ty + localY * zoom
-//
-// Focal-point-preserving zoom (keeps pinch midpoint fixed on screen):
-//   newTx = (fx - W/2) * (1 - newZoom/z0) + tx0 * (newZoom/z0)
-//   newTy = (fy - H/2) * (1 - newZoom/z0) + ty0 * (newZoom/z0)
-// ---------------------------------------------------------------------------
-const ImageViewer = ({ uri, onClose }: { uri: string; onClose: () => void }) => {
-  const [loaded, setLoaded] = useState(false);
-  const [displayZoom, setDisplayZoom] = useState(1);
-
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const txAnim    = useRef(new Animated.Value(0)).current;
-  const tyAnim    = useRef(new Animated.Value(0)).current;
-
-  // All mutable gesture state in one ref — no stale closures.
-  const g = useRef({
-    scale: 1, tx: 0, ty: 0,
-    // pinch
-    pinchActive:    false,
-    pinchInitDist:  1,
-    pinchInitScale: 1,
-    pinchFocalX:    0, pinchFocalY: 0,
-    pinchInitTx:    0, pinchInitTy: 0,
-    // pan — tracked via absolute positions, no reliance on gs.dx/dy
-    panActive:  false,
-    panStartX:  0, panStartY: 0,
-    panInitTx:  0, panInitTy: 0,
-    // double-tap
-    dtLastTime: 0,
-  }).current;
-
-  // These refs let the responder callbacks (created once) always call the
-  // latest render's closure for Animated.Value updates.
-  const setTransformRef = useRef<(s: number, x: number, y: number) => void>(() => {});
-  const animateToRef    = useRef<(s: number, x: number, y: number) => void>(() => {});
-
-  // Reassigned on every render — captures the freshest scaleAnim/txAnim refs.
-  setTransformRef.current = (scale: number, tx: number, ty: number) => {
-    g.scale = scale; g.tx = tx; g.ty = ty;
-    scaleAnim.setValue(scale);
-    txAnim.setValue(tx);
-    tyAnim.setValue(ty);
-    setDisplayZoom(scale);
-  };
-
-  animateToRef.current = (scale: number, tx: number, ty: number) => {
-    g.scale = scale; g.tx = tx; g.ty = ty;
-    setDisplayZoom(scale);
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: scale, useNativeDriver: false, friction: 7, tension: 40 }),
-      Animated.spring(txAnim,    { toValue: tx,    useNativeDriver: false, friction: 7, tension: 40 }),
-      Animated.spring(tyAnim,    { toValue: ty,    useNativeDriver: false, friction: 7, tension: 40 }),
-    ]).start();
-  };
-
-  const W       = SCREEN_WIDTH;
-  const H       = SCREEN_HEIGHT;
-  const MIN_Z   = 1;
-  const MAX_Z   = 500;
-
-  // ---- responder handlers (created once, access state via `g` ref) --------
-
-  const onGrant = useRef((e: any) => {
-    const t = e.nativeEvent.touches;
-    if (t.length >= 2) {
-      // Both fingers already down when we received the grant (rare but possible).
-      const dx = t[0].pageX - t[1].pageX;
-      const dy = t[0].pageY - t[1].pageY;
-      g.pinchActive    = true;
-      g.panActive      = false;
-      g.pinchInitDist  = Math.sqrt(dx * dx + dy * dy) || 1;
-      g.pinchInitScale = g.scale;
-      g.pinchFocalX    = (t[0].pageX + t[1].pageX) / 2;
-      g.pinchFocalY    = (t[0].pageY + t[1].pageY) / 2;
-      g.pinchInitTx    = g.tx;
-      g.pinchInitTy    = g.ty;
-    } else {
-      // Single finger — pan start + double-tap check.
-      g.pinchActive = false;
-      g.panActive   = true;
-      g.panStartX   = t[0]?.pageX ?? W / 2;
-      g.panStartY   = t[0]?.pageY ?? H / 2;
-      g.panInitTx   = g.tx;
-      g.panInitTy   = g.ty;
-
-      const now = Date.now();
-      if (now - g.dtLastTime < 280) {
-        g.dtLastTime = 0;
-        const tapX = t[0]?.pageX ?? W / 2;
-        const tapY = t[0]?.pageY ?? H / 2;
-        if (g.scale > 1.05) {
-          setTransformRef.current(1, 0, 0);
-        } else {
-          const tz = 3, z0 = g.scale, tx0 = g.tx, ty0 = g.ty;
-          animateToRef.current(
-            tz,
-            (tapX - W / 2) * (1 - tz / z0) + tx0 * (tz / z0),
-            (tapY - H / 2) * (1 - tz / z0) + ty0 * (tz / z0),
-          );
-        }
-      } else {
-        g.dtLastTime = now;
-      }
-    }
-  }).current;
-
-  const onMove = useRef((e: any) => {
-    const t = e.nativeEvent.touches;   // ALWAYS all active touches in raw API
-
-    if (t.length >= 2) {
-      // ---- pinch ----
-      if (!g.pinchActive) {
-        // Second finger landed after the initial grant — init pinch now.
-        const dx = t[0].pageX - t[1].pageX;
-        const dy = t[0].pageY - t[1].pageY;
-        g.pinchActive    = true;
-        g.panActive      = false;
-        g.pinchInitDist  = Math.sqrt(dx * dx + dy * dy) || 1;
-        g.pinchInitScale = g.scale;
-        g.pinchFocalX    = (t[0].pageX + t[1].pageX) / 2;
-        g.pinchFocalY    = (t[0].pageY + t[1].pageY) / 2;
-        g.pinchInitTx    = g.tx;
-        g.pinchInitTy    = g.ty;
-      }
-
-      const dx   = t[0].pageX - t[1].pageX;
-      const dy   = t[0].pageY - t[1].pageY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      const newScale = Math.min(
-        Math.max(g.pinchInitScale * (dist / g.pinchInitDist), MIN_Z),
-        MAX_Z,
-      );
-
-      const r   = newScale / g.pinchInitScale;
-      const fx  = g.pinchFocalX, fy  = g.pinchFocalY;
-      const tx0 = g.pinchInitTx, ty0 = g.pinchInitTy;
-
-      setTransformRef.current(
-        newScale,
-        (fx - W / 2) * (1 - r) + tx0 * r,
-        (fy - H / 2) * (1 - r) + ty0 * r,
-      );
-    } else if (t.length === 1 && g.panActive && !g.pinchActive) {
-      // ---- pan (absolute delta, not PanResponder's gs.dx) ----
-      setTransformRef.current(
-        g.scale,
-        g.panInitTx + (t[0].pageX - g.panStartX),
-        g.panInitTy + (t[0].pageY - g.panStartY),
-      );
-    }
-  }).current;
-
-  const onRelease = useRef((e: any) => {
-    const remaining = e.nativeEvent.touches;
-    if (remaining.length >= 2) {
-      // Still multiple fingers — shouldn't normally happen but handle gracefully.
-      return;
-    }
-    if (remaining.length === 1 && g.pinchActive) {
-      // One finger lifted from a pinch — switch the remaining finger to pan.
-      g.pinchActive = false;
-      g.panActive   = true;
-      g.panStartX   = remaining[0].pageX;
-      g.panStartY   = remaining[0].pageY;
-      g.panInitTx   = g.tx;
-      g.panInitTy   = g.ty;
-      return;
-    }
-    // All fingers up.
-    g.pinchActive = false;
-    g.panActive   = false;
-    if (g.scale < MIN_Z) {
-      setTransformRef.current(MIN_Z, 0, 0);
-    }
-  }).current;
-
-  const onTerminate = useRef(() => {
-    g.pinchActive = false;
-    g.panActive   = false;
-  }).current;
-
-  return (
-    <Modal visible animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-      <StatusBar backgroundColor="#000" barStyle="light-content" />
-      <View style={styles.viewerContainer}>
-
-        <Animated.View
-          style={{
-            width: W,
-            height: H,
-            transform: [
-              { translateX: txAnim },
-              { translateY: tyAnim },
-              { scale: scaleAnim },
-            ],
-          }}
-          // Raw responder API — onResponderMove always has ALL active touches.
-          onStartShouldSetResponder={() => true}
-          onMoveShouldSetResponder={() => true}
-          onResponderTerminationRequest={() => false}
-          onResponderGrant={onGrant}
-          onResponderMove={onMove}
-          onResponderRelease={onRelease}
-          onResponderTerminate={onTerminate}
-        >
-          <Image
-            source={{ uri }}
-            style={{
-              width: W,
-              height: H,
-              resizeMode: 'contain',
-              opacity: loaded ? 1 : 0,
-            }}
-            onLoad={() => setLoaded(true)}
-          />
-        </Animated.View>
-
-        {!loaded && (
-          <View style={{ ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator size="large" color="white" />
-            <Text style={{ color: '#ccc', marginTop: 10 }}>Loading image\u2026</Text>
-          </View>
-        )}
-
-        <View style={styles.viewerZoomLevelWrap} pointerEvents="none">
-          <Text style={styles.viewerZoomLevel}>{displayZoom.toFixed(1)}×</Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.viewerFitToScreen}
-          onPress={() => setTransformRef.current(1, 0, 0)}
-        >
-          <Icon name="fullscreen" size={26} color="white" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.viewerClose} onPress={onClose}>
-          <Icon name="close" size={26} color="white" />
-        </TouchableOpacity>
-
-        <View style={styles.viewerHintWrap} pointerEvents="none">
-          <Text style={styles.viewerHint}>Pinch or double-tap to zoom</Text>
-        </View>
-
-      </View>
-    </Modal>
-  );
-};
-
-// ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
 const CaptureScreen = ({ route, navigation }: CaptureProps) => {
@@ -395,6 +136,8 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
   // Full displayable URI — either file:// (from capture) or content:// (from picker)
   const [displayUri, setDisplayUri] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
+  // Full-screen live preview (stream URL when open)
+  const [previewFullScreenUrl, setPreviewFullScreenUrl] = useState<string | null>(null);
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -421,6 +164,18 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
     setDevices(result);
     setLoadingDevices(false);
   }, [ips]);
+
+  // Default to first device and first camera when devices are loaded
+  useEffect(() => {
+    if (devices.length === 0) return;
+    if (selectedDeviceIdx === null) {
+      setSelectedDeviceIdx(0);
+      const first = devices[0];
+      if (first?.status?.cams?.length) {
+        setSelectedCamIdx(0);
+      }
+    }
+  }, [devices]); // eslint-disable-line react-hooks/exhaustive-deps -- only run when devices list changes
 
   useEffect(() => {
     navigation.setOptions({
@@ -581,6 +336,46 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
 
         <View style={styles.horizontalSpacerWithMargin} />
 
+        {/* ---------- Live preview (when device + camera selected) ---------- */}
+        {selectedDevice && selectedCamIdx !== null && selectedDevice.status.cams.length > 0 && (
+          <View style={styles.screenView}>
+            <TouchableOpacity
+              style={{ ...styles.card, padding: 0, overflow: 'hidden' }}
+              onPress={() => setPreviewFullScreenUrl(getPreviewStreamUrl(selectedDevice.ip, selectedCamIdx))}
+              activeOpacity={1}
+            >
+              <Text style={[styles.textBold, { padding: 6 }]}>Live preview</Text>
+              <View style={styles.previewFrame}>
+                <WebView
+                  pointerEvents="none"
+                  key={`preview-${selectedDevice.ip}-${selectedCamIdx}`}
+                  source={{
+                    html: getPreviewStreamHtml(
+                      getPreviewStreamUrl(selectedDevice.ip, selectedCamIdx),
+                    ),
+                  }}
+                  style={styles.previewImage}
+                  scrollEnabled={false}
+                  originWhitelist={['*']}
+                  mixedContentMode="compatibility"
+                  androidLayerType="hardware"
+                />
+                <View style={styles.thumbOverlay}>
+                  <Icon name="zoom-in" size={24} color="white" />
+                  <Text style={[styles.textBold, { color: 'white', marginLeft: 6 }]}>
+                    Tap to view full image
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.textNormal, { padding: 4, fontSize: 12, color: '#666' }]}>
+                Camera {selectedCamIdx + 1} • {selectedDevice.ip}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.horizontalSpacerWithMargin} />
+
         {/* ---------- Action buttons ---------- */}
         <View style={styles.screenView}>
           <View style={styles.card}>
@@ -644,9 +439,17 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
       {/* ---------- Loading overlay ---------- */}
       {capturing && <CaptureLoader elapsedSec={elapsedSec} />}
 
-      {/* ---------- Full-screen viewer ---------- */}
+      {/* ---------- Full-screen image viewer (captured/loaded image) ---------- */}
       {viewerOpen && displayUri && (
-        <ImageViewer uri={displayUri} onClose={() => setViewerOpen(false)} />
+        <FullScreenImageViewer uri={displayUri} onClose={() => setViewerOpen(false)} />
+      )}
+
+      {/* ---------- Full-screen stream viewer (live preview) ---------- */}
+      {previewFullScreenUrl && (
+        <FullScreenStreamViewer
+          streamUrl={previewFullScreenUrl}
+          onClose={() => setPreviewFullScreenUrl(null)}
+        />
       )}
     </SafeAreaView>
   );
@@ -705,6 +508,16 @@ const styles = StyleSheet.create({
     width: 1,
     marginVertical: 6,
   },
+  previewFrame: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#111',
+    overflow: 'hidden',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
   thumbOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -747,59 +560,6 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: 'black',
     borderRadius: 2,
-  },
-  // --- Image viewer ---
-  viewerContainer: {
-    flex: 1,
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerZoomLevelWrap: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  viewerZoomLevel: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    color: '#fff',
-    fontSize: 15,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  viewerFitToScreen: {
-    position: 'absolute',
-    top: 44,
-    left: 16,
-    zIndex: 10,
-    padding: 6,
-  },
-  viewerClose: {
-    position: 'absolute',
-    top: 44,
-    right: 16,
-    zIndex: 10,
-    padding: 6,
-  },
-  viewerHintWrap: {
-    position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  viewerHint: {
-    textAlign: 'center',
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 12,
   },
 });
 
