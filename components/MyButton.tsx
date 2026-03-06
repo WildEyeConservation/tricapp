@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Button
 } from 'react-native';
+import { theme } from '../theme';
 
 interface IButtonAdd {
   width?: number;
@@ -20,7 +21,7 @@ const MyButton = (props: MyButtonProps) => {
       ...styles.button,
       backgroundColor: 'transparent',
       borderWidth: 1,
-      borderColor: disabled ? 'grey' : 'green',
+      borderColor: disabled ? 'grey' : theme.primary,
       width: width ? width : styles.button.width
     }} disabled={disabled}>
       <Text style={styles.text}>{title}</Text>

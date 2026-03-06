@@ -343,7 +343,7 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
           )}
         </View>
 
-        <View style={styles.horizontalSpacerWithMargin} />
+        {selectedDevice && <View style={styles.horizontalSpacerWithMargin} />}
 
         {/* ---------- Camera list ---------- */}
         {selectedDevice && (
@@ -379,7 +379,7 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
           </View>
         )}
 
-        <View style={styles.horizontalSpacerWithMargin} />
+        {selectedDevice && selectedCamIdx !== null && <View style={styles.horizontalSpacerWithMargin} />}
 
         {/* ---------- Live preview (when device + camera selected) ---------- */}
         {selectedDevice && selectedCamIdx !== null && selectedDevice.status.cams.length > 0 && (

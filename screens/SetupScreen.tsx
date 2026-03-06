@@ -47,6 +47,7 @@ import { IGpioCamera, IGpioCameraSettings, IStatus, IBackupStatus, INetbirdStatu
 import { setIp, setIps } from '../store/actions/WifiActions';
 import confirm from '../components/Alert';
 import { formatSeconds } from '../components/Utils';
+import { theme } from '../theme';
 import IPv4Prompt from '../components/IPv4Prompt';
 
 interface ISelectIp {
@@ -538,16 +539,16 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
             })))}
           </View>
         </View>}
-        {gpioCams.length > 0 && !hideFromSetInterval && <View style={styles.horizontalSpacerWithMargin}></View>}
-        {selectedIdx < gpioCams.length && !hideFromSetInterval && <View style={styles.card}>
+        {gpioCams.length > 0 && <View style={styles.horizontalSpacerWithMargin}></View>}
+        {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={styles.textNormal}>Netbird Status:</Text>
               {netbirdStatus && netbirdStatus.connected && (
-                <Text style={[styles.textNormal, { color: 'green', marginLeft: 10 }]}>Connected</Text>
+                <Text style={[styles.textNormal, { color: theme.primary, marginLeft: 10 }]}>Connected</Text>
               )}
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            {!hideFromSetInterval && <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <TextInput
                 style={[styles.input, { flex: 1, marginRight: 10 }]}
                 value={netbirdKey}
@@ -590,7 +591,7 @@ const SetupScreen = ({ route, navigation }: SetupProps) => {
                   }
                 }}
               ></MyButton>
-            </View>
+            </View>}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
               <MyButton
                 title='Connect'

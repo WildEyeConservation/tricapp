@@ -66,6 +66,7 @@ import dgram from 'react-native-udp';
 import { setIp, setIps } from '../store/actions/WifiActions';
 import { getStoredIps } from '../network/async_storage';
 import { formatSeconds } from '../components/Utils'
+import { theme } from '../theme';
 
 interface ISelectIp {
   (ip: string): void;
@@ -155,7 +156,7 @@ const renderGpioCam = (item: IGpioCamera, key: string, flex: number[], selectDev
             <IconCom name="camera-off" size={25} color={'black'} /> :
             item.status?.mode === 'STOPPED' ?
             <Icon name="camera-alt" size={25} color={'black'} /> :
-            <Icon name="error" size={22} color={'red'} />}
+            <Icon name="error" size={22} color={theme.error} />}
         </TouchableOpacity>
       </View>
     </View>
@@ -581,13 +582,12 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
   if (starting) {
     return (
       <SafeAreaView style={styles.screen}>
-        <View style={styles.screenView}>
+        <View style={styles.startingContent}>
           <View style={{ ...styles.card, alignItems: 'center', justifyContent: 'center', }}>
             <Text style={styles.textNormal}>Detecting devices on the network...</Text>
             <ActivityIndicator size="small" color='black' />
           </View>
-        </View>
-        <View style={styles.screenView}>
+          <View style={styles.horizontalSpacerWithMargin}></View>
           <View style={{ ...styles.card, alignItems: 'center', justifyContent: 'center', }}>
             <Text style={styles.textNormal}>Please ensure your hotspot is started with:</Text>
             <Text style={styles.textNormal}>SSID: ESS-ops</Text>
@@ -600,7 +600,11 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.screenView}>
+      <ScrollView
+        style={styles.screenView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+      >
         {gpioCams.length > 0 && isError && !stopRequested && <View style={styles.errorCard}>
           <TouchableOpacity onPress={() => { setIsError(false) }}>
             <Text style={styles.textBold}>Something went wrong! Dismiss?</Text>
@@ -646,39 +650,6 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
             ))}
           </View>)}
         <View style={styles.horizontalSpacerWithMargin}></View>
-        <View style={styles.card}>
-          <View style={{ flexDirection: 'row', width: '95%', justifyContent: 'space-evenly' }}>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={async () => {
-              Toast.show('Start capturing...');
-              setIsError(false);
-              setStopRequested(false);
-              setPrevGpioCams(null);
-              for (const gpioCam of gpioCams) {
-                startCapture(gpioCam.ip).then(() => {
-                  console.log('start req', gpioCam.ip)
-                }).catch((e) => console.log(e));
-              }
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Icon name="camera-alt" size={30} color={'black'} />
-                <Text style={styles.textNormal}>Start all</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} disabled={!isCapturing} onPress={() => {
-              Toast.show('Stop capturing...');
-              setStopRequested(true);
-              for (const gpioCam of gpioCams) {
-                stopCapture(gpioCam.ip).then(() => console.log('stop req', gpioCam.ip)).catch((e) => console.log(e));
-              }
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <IconCom name="camera-off" size={30} color={'black'} />
-                <Text style={styles.textNormal}>Stop all</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <View style={styles.horizontalSpacerThick}></View>
         {selectedIdx < gpioCams.length && <View style={styles.card}>
           <View style={{ flexDirection: 'row', padding: 5 }}>
             {["Device", "Cameras", "GPS", ""].map((item, index) => (
@@ -700,28 +671,87 @@ const Homescreen = ({ route, navigation }: HomeProps) => {
         </View>}
         {(externalStats || internalStats) && <View style={styles.horizontalSpacerWithMargin}></View>}
         {(externalStats || internalStats) && selectedIdx < gpioCams.length && <View style={styles.card}>
-          <View>
-            <View style={{ flexDirection: 'row', padding: 5 }}>
-              {["", "Free", "Used", "Capacity"].map((item, index) => (
-                renderFixedCols(item, index.toString())
-              ))}
-            </View>
-            <View style={styles.horizontalSpacer}></View>
-            {internalStats && renderStorage("Internal", internalStats)}
-            {externalStats && renderStorage("External", externalStats)}
-            {internalStats && gpioCams[selectedIdx].status.cams.length > 0 && samplePeriodS > 0 &&
-              <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }}>
-                <Text style={styles.textNormal}>Estimated flight time:</Text>
-                <Text style={styles.textNormal}>{
-                  formatSeconds(internalStats.freeGB *
-                    1024 *
-                    samplePeriodS /
-                    AVERAGE_ARW_MB /
-                    gpioCams[selectedIdx].status.cams.length)
-                }</Text>
-              </View>}
+          <View style={{ flexDirection: 'row', padding: 5 }}>
+            {["", "Free", "Used", "Capacity"].map((item, index) => (
+              renderFixedCols(item, index.toString())
+            ))}
           </View>
+          <View style={styles.horizontalSpacer}></View>
+          {internalStats && renderStorage("Internal", internalStats)}
+          {externalStats && renderStorage("External", externalStats)}
+          {internalStats && gpioCams[selectedIdx].status.cams.length > 0 && samplePeriodS > 0 &&
+            <View style={{ flexDirection: 'row', justifyContent: 'space-evenly' }}>
+              <Text style={styles.textNormal}>Estimated flight time:</Text>
+              <Text style={styles.textNormal}>{
+                formatSeconds(internalStats.freeGB *
+                  1024 *
+                  samplePeriodS /
+                  AVERAGE_ARW_MB /
+                  gpioCams[selectedIdx].status.cams.length)
+              }</Text>
+            </View>}
         </View>}
+      </ScrollView>
+      <View style={[
+        styles.startStopCardContainer,
+        isCapturing && !isError && { backgroundColor: theme.primary, borderRadius: 12, overflow: 'hidden' },
+        isCapturing && isError && !stopRequested && { backgroundColor: theme.error, borderRadius: 12, overflow: 'hidden' },
+      ]}>
+        <View style={[
+          styles.startStopCard,
+          isCapturing && !isError && { backgroundColor: theme.primary },
+          isCapturing && isError && !stopRequested && { backgroundColor: theme.error },
+          isCapturing && { justifyContent: 'center' },
+        ]}>
+          {isCapturing ? (
+            <TouchableOpacity style={styles.startStopButton} onPress={() => {
+              Toast.show('Stop capturing...');
+              setStopRequested(true);
+              for (const gpioCam of gpioCams) {
+                stopCapture(gpioCam.ip).then(() => console.log('stop req', gpioCam.ip)).catch((e) => console.log(e));
+              }
+            }}>
+              <IconCom
+                name="camera-off"
+                size={32}
+                color={isError ? 'black' : 'white'}
+              />
+              <Text style={[
+                styles.startStopLabel,
+                { color: isError ? 'black' : 'white' },
+              ]}>Stop all</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.startStopButton} onPress={async () => {
+              Toast.show('Start capturing...');
+              setIsError(false);
+              setStopRequested(false);
+              setPrevGpioCams(null);
+              let anySuccess = false;
+              for (const gpioCam of gpioCams) {
+                try {
+                  const res = await startCapture(gpioCam.ip);
+                  if (res?.success) {
+                    anySuccess = true;
+                  }
+                  console.log('start req', gpioCam.ip);
+                } catch (e) {
+                  console.log(e);
+                }
+              }
+              if (anySuccess) {
+                setIsCapturing(true);
+              }
+            }}>
+              <Icon
+                name="camera-alt"
+                size={32}
+                color="black"
+              />
+              <Text style={[styles.startStopLabel, { color: 'black' }]}>Start all</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </SafeAreaView >
   )
@@ -732,17 +762,68 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
+    // backgroundColor: '#1C463C'
   },
   screenView: {
+    width: '100%',
+    flex: 1,
+  },
+  startingContent: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'flex-start',
     padding: 2,
-    margin: 2
+    margin: 2,
+  },
+  scrollContent: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    padding: 2,
+    margin: 2,
+    paddingBottom: 16,
+  },
+  startStopCardContainer: {
+    width: '40%',
+    padding: 4,
+    margin: 4,
+    paddingBottom: 4,
+  },
+  startStopCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+  },
+  startStopButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  startStopDivider: {
+    width: 2,
+    backgroundColor: '#ccc',
+    alignSelf: 'stretch',
+    marginVertical: 4,
+  },
+  startStopLabel: {
+    color: 'black',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 2,
   },
   connectionStatus: {
     width: '100%',
-    backgroundColor: 'crimson',
+    backgroundColor: theme.error,
     alignItems: 'center',
   },
   copyStatus: {
@@ -800,7 +881,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   errorCard: {
-    backgroundColor: '#ff0000ff',
+    backgroundColor: theme.error,
     borderRadius: 8,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },

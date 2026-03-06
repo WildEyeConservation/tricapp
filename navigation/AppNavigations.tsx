@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, createContext, useContext } from 'react';
+import { theme } from '../theme';
 import {
   View,
   Text,
@@ -55,7 +56,7 @@ export const GpsStatusContext = createContext<GpsStatusContextType>({
 });
 
 // ---------------------------------------------------------------------------
-// Capture status context – header color: green when capturing, red when error
+// Capture status context – isCapturing / isError used by screens (e.g. HomeScreen)
 // ---------------------------------------------------------------------------
 export interface CaptureStatusContextType {
   isCapturing: boolean;
@@ -69,10 +70,6 @@ export const CaptureStatusContext = createContext<CaptureStatusContextType>({
   setIsCapturing: () => {},
   setIsError: () => {},
 });
-
-const HEADER_GREEN = '#1C463C';
-const HEADER_RED = '#C62828';
-const HEADER_DEFAULT = '#f5f5f5';
 
 // ---------------------------------------------------------------------------
 // Drawer content – mirrors what AboutScreen used to show
@@ -295,12 +292,10 @@ const CaptureStack = createNativeStackNavigator<RootStackParamList>();
 const HomeNav = ({ navigation }: HomeProps) => {
   const { openDrawer } = useContext(DrawerContext);
   const { hasFix, isLogging } = useContext(GpsStatusContext);
-  const { isCapturing, isError } = useContext(CaptureStatusContext);
-  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
   return (
     <HomeStack.Navigator
       initialRouteName="HomeStack"
-      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+      screenOptions={{ headerShown: true }}
     >
       <HomeStack.Screen
         name="HomeStack"
@@ -339,11 +334,10 @@ const HomeNav = ({ navigation }: HomeProps) => {
 
 const CaptureNav = ({ navigation }: CaptureProps) => {
   const { openDrawer } = useContext(DrawerContext);
-  const { isCapturing, isError } = useContext(CaptureStatusContext);
-  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
+  const { hasFix, isLogging } = useContext(GpsStatusContext);
   return (
     <CaptureStack.Navigator
-      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+      screenOptions={{ headerShown: true }}
     >
       <CaptureStack.Screen
         name="CaptureStack"
@@ -359,6 +353,21 @@ const CaptureNav = ({ navigation }: CaptureProps) => {
               <Icon name="menu" size={26} color="#333" />
             </TouchableOpacity>
           ),
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 6 }}>
+              {hasFix && (
+                <Icon
+                  name="gps-fixed"
+                  size={22}
+                  color="black"
+                  style={{ marginRight: isLogging ? 6 : 0 }}
+                />
+              )}
+              {isLogging && (
+                <IconCom name="content-save" size={22} color="black" />
+              )}
+            </View>
+          ),
         }}
       />
     </CaptureStack.Navigator>
@@ -367,11 +376,10 @@ const CaptureNav = ({ navigation }: CaptureProps) => {
 
 const SetupNav = ({ navigation }: SetupProps) => {
   const { openDrawer } = useContext(DrawerContext);
-  const { isCapturing, isError } = useContext(CaptureStatusContext);
-  const headerBg = isError ? HEADER_RED : isCapturing ? HEADER_GREEN : HEADER_DEFAULT;
+  const { hasFix, isLogging } = useContext(GpsStatusContext);
   return (
     <SetupStack.Navigator
-      screenOptions={{ headerShown: true, headerStyle: { backgroundColor: headerBg } }}
+      screenOptions={{ headerShown: true }}
     >
       <SetupStack.Screen
         name="SetupStack"
@@ -386,6 +394,21 @@ const SetupNav = ({ navigation }: SetupProps) => {
             >
               <Icon name="menu" size={26} color="#333" />
             </TouchableOpacity>
+          ),
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 6 }}>
+              {hasFix && (
+                <Icon
+                  name="gps-fixed"
+                  size={22}
+                  color="black"
+                  style={{ marginRight: isLogging ? 6 : 0 }}
+                />
+              )}
+              {isLogging && (
+                <IconCom name="content-save" size={22} color="black" />
+              )}
+            </View>
           ),
         }}
       />
@@ -403,7 +426,7 @@ const TabNav = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#1C463C',
+        tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: 'black',
       }}
     >

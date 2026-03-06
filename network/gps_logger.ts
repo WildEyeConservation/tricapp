@@ -33,7 +33,7 @@ const formatSessionTimestamp = (date: Date): string => {
 };
 
 const positionToCsvRow = (pos: GeoPosition): string => {
-  const { latitude, longitude, altitude, accuracy } = pos.coords;
+  const { latitude, longitude, altitude, accuracy, altitudeAccuracy } = pos.coords;
 
   const latAbs = Math.abs(latitude);
   const lonAbs = Math.abs(longitude);
@@ -43,12 +43,12 @@ const positionToCsvRow = (pos: GeoPosition): string => {
   const quality = 1;
   const gpsTimestamp = pos.timestamp.toString();
   const alt = altitude != null ? altitude.toFixed(3) : '0.000';
-  // accuracy is horizontal accuracy in metres; closest available equivalent to HDOP
-  const hdop = accuracy != null ? accuracy.toFixed(2) : '';
+  const horizontalAccuracy = accuracy != null ? accuracy.toFixed(2) : '';
+  const verticalAccuracy = altitudeAccuracy != null ? altitudeAccuracy.toFixed(2) : '';
   // Geoidal separation is not exposed by the standard Geolocation API
   const separation = '';
 
-  return `${quality},${gpsTimestamp},${latAbs.toFixed(7)},${ns},${lonAbs.toFixed(7)},${ew},${alt},${hdop},${separation}\n`;
+  return `${quality},${gpsTimestamp},${latAbs.toFixed(7)},${ns},${lonAbs.toFixed(7)},${ew},${alt},${horizontalAccuracy},${verticalAccuracy},\n`;
 };
 
 const ensureDir = async (dir: string) => {
@@ -59,6 +59,7 @@ const ensureDir = async (dir: string) => {
 };
 
 const onPosition = (position: GeoPosition) => {
+  console.log('gps_logger: onPosition', position);
   positionReceivedCb?.();
   if (!logFilePath || !headerWritten) return;
   const row = positionToCsvRow(position);
@@ -153,7 +154,7 @@ export const startGpsLogging = async (sessionStart: Date): Promise<void> => {
 
   const filename = `gps_${formatSessionTimestamp(sessionStart)}.csv`;
   const path = `${TRICAPP_DIR}/${filename}`;
-  const header = 'quality,gps_timestamp,latitude,N_S,longitude,E_W,altitude,hdop,separation\n';
+  const header = 'quality,gps_timestamp,latitude,N_S,longitude,E_W,altitude,horizontal_accuracy,vertical_accuracy\n';
 
   try {
     await RNBlobUtil.fs.writeFile(path, header, 'utf8');

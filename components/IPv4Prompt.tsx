@@ -10,6 +10,7 @@ import {
   Platform,
   StyleSheet,
 } from "react-native";
+import { theme } from '../theme';
 import MyButton from '../components/MyButton';
 
 type Props = {
@@ -156,7 +157,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
-    backgroundColor: "#1C463C",
+    backgroundColor: theme.primary,
   },
   btnDisabled: { opacity: 0.5 },
   btnPrimaryText: { fontSize: 16, color: "white", fontWeight: "600" },
