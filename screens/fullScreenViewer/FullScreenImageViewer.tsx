@@ -245,6 +245,7 @@ export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerPro
   const [loaded, setLoaded] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [fitToViewToken, setFitToViewToken] = useState(0);
 
   const rotationRef = useRef(0);
   rotationRef.current = rotation;
@@ -321,7 +322,10 @@ export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerPro
   return (
     <FullScreenViewerShell
       onClose={onClose}
-      onFit={() => setTransformRef.current(fitScale, 0, 0)}
+      onFit={() => {
+        setTransformRef.current(fitScale, 0, 0);
+        if (useTiledView) setFitToViewToken((n) => n + 1);
+      }}
       onRotate={() => setRotation((r) => (r + 90) % 360)}
       loadingOverlay={
         !imageVisible ? (
@@ -361,6 +365,7 @@ export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerPro
           {useTiledView ? (
             <RawTiledImageView
               uri={uri}
+              fitToViewToken={fitToViewToken}
               style={{
                 width: SCREEN_WIDTH,
                 height: SCREEN_HEIGHT,

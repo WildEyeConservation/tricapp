@@ -2,6 +2,7 @@ package com.example.rawtiledimageview;
 
 import android.net.Uri;
 import com.davemorrissey.labs.subscaleview.ImageSource;
+import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
 import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.annotations.ReactProp;
@@ -28,6 +29,13 @@ public class RawTiledImageViewManager extends SimpleViewManager<RawPixelTiledIma
     @ReactProp(name = "uri")
     public void setUri(RawPixelTiledImageView view, String uri) {
         if (uri == null || uri.isEmpty()) return;
+        view.setOnImageEventListener(new SubsamplingScaleImageView.DefaultOnImageEventListener() {
+            @Override
+            public void onReady() {
+                view.resetScaleAndCenter();
+                view.setOnImageEventListener(null);
+            }
+        });
         Uri parsed = Uri.parse(uri);
         String scheme = parsed.getScheme();
         if (scheme == null || scheme.isEmpty()) {
@@ -35,5 +43,10 @@ public class RawTiledImageViewManager extends SimpleViewManager<RawPixelTiledIma
             return;
         }
         view.setImage(ImageSource.uri(parsed).tilingDisabled());
+    }
+
+    @ReactProp(name = "fitToViewToken")
+    public void setFitToViewToken(RawPixelTiledImageView view, int token) {
+        view.resetScaleAndCenter();
     }
 }

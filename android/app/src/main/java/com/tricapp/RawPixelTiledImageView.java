@@ -15,7 +15,7 @@ public class RawPixelTiledImageView extends SubsamplingScaleImageView {
 
     public RawPixelTiledImageView(Context context) {
         super(context);
-        gridPaint.setColor(Color.argb(140, 255, 255, 255));
+        gridPaint.setColor(Color.argb(85, 170, 170, 170));
         gridPaint.setStrokeWidth(1f);
         gridPaint.setAntiAlias(false);
     }
@@ -27,7 +27,7 @@ public class RawPixelTiledImageView extends SubsamplingScaleImageView {
 
         final float scale = getScale();
         // Draw pixel grid only when one source pixel is large enough on screen.
-        if (scale < 8f) return;
+        if (scale < 10f) return;
 
         PointF srcTopLeft = viewToSourceCoord(0f, 0f);
         PointF srcBottomRight = viewToSourceCoord(getWidth(), getHeight());
