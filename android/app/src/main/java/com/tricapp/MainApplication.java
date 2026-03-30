@@ -17,6 +17,8 @@ import java.util.List;
 import com.facebook.react.bridge.JSIModulePackage;
 import com.example.networkscanner.NetworkScannerPackage;
 import com.example.hotspotmanager.HotspotManagerPackage;
+import com.example.rawimageprocessor.RawImageProcessorPackage;
+import com.example.rawtiledimageview.RawTiledImageViewPackage;
 
 public class MainApplication extends Application implements ReactApplication {
 
@@ -34,6 +36,8 @@ public class MainApplication extends Application implements ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           packages.add(new NetworkScannerPackage());
           packages.add(new HotspotManagerPackage());
+          packages.add(new RawImageProcessorPackage());
+          packages.add(new RawTiledImageViewPackage());
           return packages;
         }
 

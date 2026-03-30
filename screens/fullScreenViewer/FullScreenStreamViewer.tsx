@@ -36,7 +36,6 @@ export function FullScreenStreamViewer({ streamUrl, onClose }: FullScreenStreamV
     scaleAnim,
     txAnim,
     tyAnim,
-    displayZoom,
     setTransformRef,
     gestureHandlers,
   } = useZoomPanGesture(contentWRef, contentHRef, rotationRef);
@@ -46,7 +45,6 @@ export function FullScreenStreamViewer({ streamUrl, onClose }: FullScreenStreamV
       onClose={onClose}
       onFit={() => setTransformRef.current(1, 0, 0)}
       onRotate={() => setRotation((r) => (r + 90) % 360)}
-      zoomLabel={`${displayZoom.toFixed(1)}×`}
     >
       <View style={viewerStyles.streamViewerCenter}>
         <View style={{ width: innerW, height: innerH, transform: [{ rotate: `${rotation}deg` }] }}>

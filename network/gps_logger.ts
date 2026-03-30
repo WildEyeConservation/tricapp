@@ -59,7 +59,7 @@ const ensureDir = async (dir: string) => {
 };
 
 const onPosition = (position: GeoPosition) => {
-  console.log('gps_logger: onPosition', position);
+  // console.log('gps_logger: onPosition', position);
   positionReceivedCb?.();
   if (!logFilePath || !headerWritten) return;
   const row = positionToCsvRow(position);

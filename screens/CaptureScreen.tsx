@@ -21,7 +21,7 @@ import { RootState } from '../store/types';
 import { IGpioCamera } from '../network/api_types';
 import { getStatus, getImageCount, captureImage, getPreviewStreamUrl } from '../network/api';
 import { CaptureProps } from '../navigation/types';
-// import RawImageProcessor from '../native/RawImageProcessor.ts';
+import RawImageProcessor from '../native/RawImageProcessor';
 import {
   FullScreenImageViewer,
   FullScreenStreamViewer,
@@ -122,6 +122,42 @@ const CaptureLoader = ({ elapsedSec }: { elapsedSec: number }) => {
   );
 };
 
+const RawConversionLoader = ({ elapsedSec }: { elapsedSec: number }) => {
+  const dots = '.'.repeat((Math.floor(elapsedSec) % 3) + 1);
+  const statusText =
+    elapsedSec < 3
+      ? 'Preparing RAW decode'
+      : elapsedSec < 15
+      ? 'Decoding and demosaicing\u2026'
+      : 'Still converting full-resolution image\u2026';
+
+  return (
+    <View style={styles.loaderOverlay}>
+      <View style={styles.loaderCard}>
+        <ActivityIndicator size="large" color="black" />
+        <Text style={[styles.textBold, { marginTop: 14, fontSize: 15 }]}>
+          Converting RAW{dots}
+        </Text>
+        <Text style={[styles.textNormal, { marginTop: 4, marginBottom: 16, textAlign: 'center' }]}>
+          {statusText}
+        </Text>
+        <Text style={[styles.textNormal, { marginBottom: 8, textAlign: 'center', color: '#666' }]}>
+          This can take up to ~30 seconds on large files.
+        </Text>
+        <View style={styles.progressBarBg}>
+          <View
+            style={[
+              styles.progressBarFg,
+              { width: `${Math.min((elapsedSec / 35) * 100, 95)}%` },
+            ]}
+          />
+        </View>
+        <Text style={[styles.textNormal, { marginTop: 6, color: '#666' }]}>{elapsedSec}s</Text>
+      </View>
+    </View>
+  );
+};
+
 // ---------------------------------------------------------------------------
 // Main screen
 // ---------------------------------------------------------------------------
@@ -136,12 +172,16 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
   const [capturing, setCapturing] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [rawConverting, setRawConverting] = useState(false);
+  const [rawConversionElapsedSec, setRawConversionElapsedSec] = useState(0);
+  const rawConversionElapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Full displayable URI — either file:// (from capture) or content:// (from picker)
   const [displayUri, setDisplayUri] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   // Full-screen live preview (stream URL when open)
   const [previewFullScreenUrl, setPreviewFullScreenUrl] = useState<string | null>(null);
+  const selectedDevice = selectedDeviceIdx !== null ? devices[selectedDeviceIdx] : null;
 
   const fetchDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -224,6 +264,7 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
     useCallback(() => {
       return () => {
         if (elapsedRef.current) clearInterval(elapsedRef.current);
+        if (rawConversionElapsedRef.current) clearInterval(rawConversionElapsedRef.current);
       };
     }, []),
   );
@@ -238,6 +279,22 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
     if (elapsedRef.current) {
       clearInterval(elapsedRef.current);
       elapsedRef.current = null;
+    }
+  };
+
+  const startRawConversionTimer = () => {
+    setRawConversionElapsedSec(0);
+    if (rawConversionElapsedRef.current) clearInterval(rawConversionElapsedRef.current);
+    rawConversionElapsedRef.current = setInterval(
+      () => setRawConversionElapsedSec(prev => prev + 1),
+      1000,
+    );
+  };
+
+  const stopRawConversionTimer = () => {
+    if (rawConversionElapsedRef.current) {
+      clearInterval(rawConversionElapsedRef.current);
+      rawConversionElapsedRef.current = null;
     }
   };
 
@@ -265,36 +322,30 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
         type: [DocumentPicker.types.images, DocumentPicker.types.allFiles],
         copyTo: 'cachesDirectory',
       });
-      const uri = result.fileCopyUri ?? result.uri;
-      setDisplayUri(uri);
+      const pickedUri = result.fileCopyUri ?? result.uri;
+      const displayName = result.name ?? pickedUri;
+      const isArw =
+        typeof displayName === 'string' ? /\.arw$/i.test(displayName) : /\.arw$/i.test(pickedUri);
 
+      let finalUri = pickedUri;
+      if (isArw) {
+        setRawConverting(true);
+        startRawConversionTimer();
+        try {
+          Toast.show('Converting RAW to full-resolution image…', Toast.SHORT);
+          finalUri = await RawImageProcessor.convertArwToPng(pickedUri);
+        } catch (err: any) {
+          Toast.show(
+            `RAW conversion failed, using original source: ${err?.message ?? err}`,
+            Toast.LONG,
+          );
+        } finally {
+          stopRawConversionTimer();
+          setRawConverting(false);
+        }
+      }
 
-      // const pickedUri = result.fileCopyUri ?? result.uri;
-      // const displayName = result.name ?? pickedUri;
-      // const isArw =
-      //   typeof displayName === 'string' ? /\.arw$/i.test(displayName) : /\.arw$/i.test(pickedUri);
-
-      // let finalUri = pickedUri;
-
-      // if (isArw) {
-      //   // We want to avoid platform decoders (which will demosaic the ARW).
-      //   // Instead, hand the file path to a native RawImageProcessor that reads
-      //   // the ARW and writes out an undemosaiced Bayer-plane PNG for viewing.
-      //   const filePath = pickedUri.startsWith('file://')
-      //     ? pickedUri.replace('file://', '')
-      //     : pickedUri;
-      //   try {
-      //     const pngPath = await RawImageProcessor.convertArwToPng(filePath);
-      //     finalUri = `file://${pngPath}`;
-      //   } catch (err: any) {
-      //     Toast.show(
-      //       `Could not convert ARW to RAW preview: ${err?.message ?? err}`,
-      //       Toast.LONG,
-      //     );
-      //   }
-      // }
-
-      // setDisplayUri(finalUri);
+      setDisplayUri(finalUri);
       setViewerOpen(true);
     } catch (e: any) {
       if (!DocumentPicker.isCancel(e)) {
@@ -303,7 +354,6 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
     }
   };
 
-  const selectedDevice = selectedDeviceIdx !== null ? devices[selectedDeviceIdx] : null;
   const canCapture =
     selectedDeviceIdx !== null &&
     selectedCamIdx !== null &&
@@ -440,12 +490,12 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
               <View style={styles.verticalSpacer} />
               <TouchableOpacity
                 style={{ flex: 1, alignItems: 'center', padding: 10 }}
-                disabled={capturing}
+                disabled={capturing || rawConverting}
                 onPress={handleLoadFromFile}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Icon name="folder-open" size={28} color={capturing ? '#aaa' : 'black'} />
-                  <Text style={[styles.textNormal, { marginLeft: 6, color: capturing ? '#aaa' : 'black' }]}>
+                  <Icon name="folder-open" size={28} color={capturing || rawConverting ? '#aaa' : 'black'} />
+                  <Text style={[styles.textNormal, { marginLeft: 6, color: capturing || rawConverting ? '#aaa' : 'black' }]}>
                     Load file
                   </Text>
                 </View>
@@ -483,6 +533,7 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
 
       {/* ---------- Loading overlay ---------- */}
       {capturing && <CaptureLoader elapsedSec={elapsedSec} />}
+      {rawConverting && <RawConversionLoader elapsedSec={rawConversionElapsedSec} />}
 
       {/* ---------- Full-screen image viewer (captured/loaded image) ---------- */}
       {viewerOpen && displayUri && (

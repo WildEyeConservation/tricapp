@@ -50,7 +50,6 @@ export type FullScreenViewerShellProps = {
   onClose: () => void;
   onFit: () => void;
   onRotate: () => void;
-  zoomLabel: string;
   children: React.ReactNode;
   loadingOverlay?: React.ReactNode;
 };
@@ -59,7 +58,6 @@ export const FullScreenViewerShell = ({
   onClose,
   onFit,
   onRotate,
-  zoomLabel,
   children,
   loadingOverlay,
 }: FullScreenViewerShellProps) => {
@@ -70,9 +68,6 @@ export const FullScreenViewerShell = ({
       <View style={[viewerStyles.container, { width, height }]}>
         {children}
         {loadingOverlay}
-      <View style={viewerStyles.zoomLevelWrap} pointerEvents="none">
-        <Text style={viewerStyles.zoomLevel}>{zoomLabel}</Text>
-      </View>
       <TouchableOpacity style={viewerStyles.fitToScreen} onPress={onFit}>
         <Icon name="fullscreen" size={26} color="white" />
       </TouchableOpacity>
@@ -115,13 +110,10 @@ export function useZoomPanGesture(
   scaleAnim: Animated.Value;
   txAnim: Animated.Value;
   tyAnim: Animated.Value;
-  displayZoom: number;
   setTransformRef: MutableRefObject<(scale: number, tx: number, ty: number) => void>;
   animateToRef: MutableRefObject<(scale: number, tx: number, ty: number) => void>;
   gestureHandlers: ZoomPanGestureHandlers;
 } {
-  const [displayZoom, setDisplayZoom] = useState(1);
-
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const txAnim = useRef(new Animated.Value(0)).current;
   const tyAnim = useRef(new Animated.Value(0)).current;
@@ -155,14 +147,12 @@ export function useZoomPanGesture(
     scaleAnim.setValue(scale);
     txAnim.setValue(tx);
     tyAnim.setValue(ty);
-    setDisplayZoom(scale);
   };
 
   animateToRef.current = (scale: number, tx: number, ty: number) => {
     g.scale = scale;
     g.tx = tx;
     g.ty = ty;
-    setDisplayZoom(scale);
     Animated.parallel([
       Animated.spring(scaleAnim, {
         toValue: scale,
@@ -304,7 +294,6 @@ export function useZoomPanGesture(
     scaleAnim,
     txAnim,
     tyAnim,
-    displayZoom,
     setTransformRef,
     animateToRef,
     gestureHandlers: {
@@ -331,23 +320,6 @@ export const viewerStyles = StyleSheet.create({
   streamViewerCenter: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  zoomLevelWrap: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  zoomLevel: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    color: '#fff',
-    fontSize: 15,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    overflow: 'hidden',
   },
   fitToScreen: {
     position: 'absolute',

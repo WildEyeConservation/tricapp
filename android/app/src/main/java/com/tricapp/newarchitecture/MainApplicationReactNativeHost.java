@@ -19,6 +19,10 @@ import com.facebook.react.fabric.CoreComponentsRegistry;
 import com.facebook.react.fabric.FabricJSIModuleProvider;
 import com.facebook.react.fabric.ReactNativeConfig;
 import com.facebook.react.uimanager.ViewManagerRegistry;
+import com.example.networkscanner.NetworkScannerPackage;
+import com.example.hotspotmanager.HotspotManagerPackage;
+import com.example.rawimageprocessor.RawImageProcessorPackage;
+import com.example.rawtiledimageview.RawTiledImageViewPackage;
 import com.tricap.BuildConfig;
 import com.tricap.newarchitecture.components.MainComponentsRegistry;
 import com.tricap.newarchitecture.modules.MainApplicationTurboModuleManagerDelegate;
@@ -51,6 +55,10 @@ public class MainApplicationReactNativeHost extends ReactNativeHost {
     //     packages.add(new TurboReactPackage() { ... });
     // If you have custom Fabric Components, their ViewManagers should also be loaded here
     // inside a ReactPackage.
+    packages.add(new NetworkScannerPackage());
+    packages.add(new HotspotManagerPackage());
+    packages.add(new RawImageProcessorPackage());
+    packages.add(new RawTiledImageViewPackage());
     return packages;
   }
 
