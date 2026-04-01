@@ -7,6 +7,7 @@ import {
   Animated,
   ActivityIndicator,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import RNBlobUtil from 'react-native-blob-util';
 import { Buffer } from 'buffer';
@@ -21,6 +22,8 @@ import {
 type FullScreenImageViewerProps = {
   uri: string;
   onClose: () => void;
+  onLoadFullRes?: () => void;
+  fullResLoading?: boolean;
 };
 
 const JPEG_SOI_A = 0xff;
@@ -35,6 +38,9 @@ const TAG_EXIF_IFD = 0x8769;
 const TAG_EXIF_WIDTH = 0xa002;
 const TAG_EXIF_HEIGHT = 0xa003;
 const DIMENSION_PROBE_BYTES = 128 * 1024;
+// Keep these overlays disabled: in practice ARW preview/full sizes differ only slightly
+// (e.g. 9504x6336 -> 9564x6376), so showing stage controls/status adds UI noise.
+const SHOW_RAW_STAGE_OVERLAYS = false;
 
 function sanitizeFilePath(uri: string): string | null {
   if (!uri.startsWith('file://')) return null;
@@ -241,7 +247,12 @@ async function getFileEncodedSize(uri: string): Promise<{ width: number; height:
  * data when zooming. The initial transform scale is set to fitScale (fit-to-screen), and
  * double-tap zooms to 1:1 pixel mapping (one image pixel = one screen pixel).
  */
-export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerProps) {
+export function FullScreenImageViewer({
+  uri,
+  onClose,
+  onLoadFullRes,
+  fullResLoading = false,
+}: FullScreenImageViewerProps) {
   const [loaded, setLoaded] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
@@ -314,6 +325,8 @@ export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerPro
 
   const imgW = imageSize?.width ?? SCREEN_WIDTH;
   const imgH = imageSize?.height ?? SCREEN_HEIGHT;
+  const isRawPreview = /raw_preview_.*\.jpg$/i.test(uri);
+  const isRawFull = /raw_full_.*\.bmp$/i.test(uri);
 
   // Keep image hidden until both the size is known (so we can set the right initial scale)
   // and the image is actually loaded (to avoid a flash at the wrong scale).
@@ -342,6 +355,61 @@ export function FullScreenImageViewer({ uri, onClose }: FullScreenImageViewerPro
       }
     >
       <View style={{ transform: [{ rotate: `${rotation}deg` }] }}>
+        {SHOW_RAW_STAGE_OVERLAYS && (isRawPreview || isRawFull) && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 10,
+              left: 0,
+              right: 0,
+              alignItems: 'center',
+              zIndex: 20,
+            }}
+            pointerEvents="none"
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.65)',
+                borderRadius: 12,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                {isRawFull ? 'Full resolution' : 'Preview'}
+              </Text>
+            </View>
+          </View>
+        )}
+        {SHOW_RAW_STAGE_OVERLAYS && isRawPreview && onLoadFullRes && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 42,
+              left: 0,
+              right: 0,
+              alignItems: 'center',
+              zIndex: 20,
+            }}
+          >
+            <TouchableOpacity
+              onPress={onLoadFullRes}
+              disabled={fullResLoading}
+              style={{
+                backgroundColor: fullResLoading ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.15)',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.35)',
+                borderRadius: 14,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                {fullResLoading ? 'Loading full HD...' : 'Load full HD'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Animated.View
           style={{
             width: useTiledView ? SCREEN_WIDTH : imgW,

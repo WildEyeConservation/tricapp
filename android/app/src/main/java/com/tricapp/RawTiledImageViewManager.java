@@ -29,6 +29,7 @@ public class RawTiledImageViewManager extends SimpleViewManager<RawPixelTiledIma
     @ReactProp(name = "uri")
     public void setUri(RawPixelTiledImageView view, String uri) {
         if (uri == null || uri.isEmpty()) return;
+        final boolean isBmp = uri.toLowerCase().contains(".bmp");
         view.setOnImageEventListener(new SubsamplingScaleImageView.DefaultOnImageEventListener() {
             @Override
             public void onReady() {
@@ -39,10 +40,12 @@ public class RawTiledImageViewManager extends SimpleViewManager<RawPixelTiledIma
         Uri parsed = Uri.parse(uri);
         String scheme = parsed.getScheme();
         if (scheme == null || scheme.isEmpty()) {
-            view.setImage(ImageSource.uri(Uri.fromFile(new java.io.File(uri))).tilingDisabled());
+            ImageSource source = ImageSource.uri(Uri.fromFile(new java.io.File(uri)));
+            view.setImage(isBmp ? source.tilingDisabled() : source);
             return;
         }
-        view.setImage(ImageSource.uri(parsed).tilingDisabled());
+        ImageSource source = ImageSource.uri(parsed);
+        view.setImage(isBmp ? source.tilingDisabled() : source);
     }
 
     @ReactProp(name = "fitToViewToken")

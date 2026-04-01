@@ -10,6 +10,14 @@
 
 static constexpr const char *LOG_TAG = "RawImageProcessorJni";
 
+static bool writeBytes(const std::string &path, const uint8_t *data, size_t size) {
+  if (data == nullptr || size == 0) return false;
+  std::ofstream out(path, std::ios::binary);
+  if (!out.is_open()) return false;
+  out.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(size));
+  return out.good();
+}
+
 static bool writeBmp24(const std::string &path, int width, int height, const uint8_t *rgb, int stride) {
   if (width <= 0 || height <= 0 || rgb == nullptr) return false;
   const int rowBytes = width * 3;
@@ -70,6 +78,68 @@ static bool writeBmp24(const std::string &path, int width, int height, const uin
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_example_rawimageprocessor_RawImageProcessorModule_nativeExtractRawThumbJpeg(
+    JNIEnv *env,
+    jobject /* thiz */,
+    jstring inputPathJ,
+    jstring outputPathJ) {
+  if (inputPathJ == nullptr || outputPathJ == nullptr) return nullptr;
+
+  const char *inputPathC = env->GetStringUTFChars(inputPathJ, nullptr);
+  const char *outputPathC = env->GetStringUTFChars(outputPathJ, nullptr);
+  if (!inputPathC || !outputPathC) {
+    if (inputPathC) env->ReleaseStringUTFChars(inputPathJ, inputPathC);
+    if (outputPathC) env->ReleaseStringUTFChars(outputPathJ, outputPathC);
+    return nullptr;
+  }
+
+  std::string inputPath(inputPathC);
+  std::string outputPath(outputPathC);
+  env->ReleaseStringUTFChars(inputPathJ, inputPathC);
+  env->ReleaseStringUTFChars(outputPathJ, outputPathC);
+
+  LibRaw raw;
+  int rc = raw.open_file(inputPath.c_str());
+  if (rc != LIBRAW_SUCCESS) {
+    __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "thumb open_file failed: %s", libraw_strerror(rc));
+    return nullptr;
+  }
+
+  rc = raw.unpack_thumb();
+  if (rc != LIBRAW_SUCCESS) {
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "no unpackable thumbnail: %s", libraw_strerror(rc));
+    return nullptr;
+  }
+
+  int memErr = LIBRAW_SUCCESS;
+  libraw_processed_image_t *thumb = raw.dcraw_make_mem_thumb(&memErr);
+  if (!thumb || memErr != LIBRAW_SUCCESS) {
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        LOG_TAG,
+        "dcraw_make_mem_thumb failed: %s",
+        libraw_strerror(memErr));
+    if (thumb) LibRaw::dcraw_clear_mem(thumb);
+    return nullptr;
+  }
+
+  bool ok = false;
+  if (thumb->type == LIBRAW_IMAGE_JPEG && thumb->data_size > 0) {
+    ok = writeBytes(outputPath, reinterpret_cast<const uint8_t *>(thumb->data), thumb->data_size);
+  } else {
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        LOG_TAG,
+        "thumbnail type unsupported for fast path: type=%d",
+        thumb->type);
+  }
+
+  LibRaw::dcraw_clear_mem(thumb);
+  if (!ok) return nullptr;
+  return env->NewStringUTF(outputPath.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_rawimageprocessor_RawImageProcessorModule_nativeConvertRawToBmp(
     JNIEnv *env,
     jobject /* thiz */,
@@ -94,6 +164,8 @@ Java_com_example_rawimageprocessor_RawImageProcessorModule_nativeConvertRawToBmp
   raw.imgdata.params.use_camera_wb = 1;
   raw.imgdata.params.output_bps = 8;
   raw.imgdata.params.no_auto_bright = 1;
+  raw.imgdata.params.half_size = 0;
+  raw.imgdata.params.user_qual = 11;
 
   int rc = raw.open_file(inputPath.c_str());
   if (rc != LIBRAW_SUCCESS) {
@@ -110,11 +182,21 @@ Java_com_example_rawimageprocessor_RawImageProcessorModule_nativeConvertRawToBmp
   __android_log_print(
       ANDROID_LOG_INFO,
       LOG_TAG,
-      "sizes after unpack: raw=%ux%u i=%ux%u",
+      "sizes after unpack: raw=%ux%u i=%ux%u full=%ux%u",
       raw.imgdata.sizes.raw_width,
       raw.imgdata.sizes.raw_height,
       raw.imgdata.sizes.iwidth,
-      raw.imgdata.sizes.iheight);
+      raw.imgdata.sizes.iheight,
+      raw.imgdata.sizes.width,
+      raw.imgdata.sizes.height);
+  __android_log_print(
+      ANDROID_LOG_INFO,
+      LOG_TAG,
+      "params before process: half_size=%d user_qual=%d four_color_rgb=%d output_color=%d",
+      raw.imgdata.params.half_size,
+      raw.imgdata.params.user_qual,
+      raw.imgdata.params.four_color_rgb,
+      raw.imgdata.params.output_color);
 
   rc = raw.dcraw_process();
   if (rc != LIBRAW_SUCCESS) {

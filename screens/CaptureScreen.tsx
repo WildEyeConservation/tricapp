@@ -179,6 +179,8 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
   // Full displayable URI — either file:// (from capture) or content:// (from picker)
   const [displayUri, setDisplayUri] = useState<string | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [rawOriginalUri, setRawOriginalUri] = useState<string | null>(null);
+  const [rawFullLoading, setRawFullLoading] = useState(false);
   // Full-screen live preview (stream URL when open)
   const [previewFullScreenUrl, setPreviewFullScreenUrl] = useState<string | null>(null);
   const selectedDevice = selectedDeviceIdx !== null ? devices[selectedDeviceIdx] : null;
@@ -319,21 +321,38 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
   const handleLoadFromFile = async () => {
     try {
       const [result] = await DocumentPicker.pick({
-        type: [DocumentPicker.types.images, DocumentPicker.types.allFiles],
+        // Use allFiles to avoid document providers returning downscaled image variants.
+        type: [DocumentPicker.types.allFiles],
         copyTo: 'cachesDirectory',
       });
-      const pickedUri = result.fileCopyUri ?? result.uri;
+      const pickedUri =
+        typeof result.uri === 'string' && result.uri.startsWith('file://')
+          ? result.uri
+          : (result.fileCopyUri ?? result.uri);
       const displayName = result.name ?? pickedUri;
+      console.log(
+        `[RAW] picker result: uri=${result.uri} fileCopyUri=${result.fileCopyUri ?? 'null'} name=${
+          result.name ?? 'null'
+        } size=${String(result.size ?? 'null')} type=${result.type ?? 'null'} pickedUri=${pickedUri}`,
+      );
       const isArw =
         typeof displayName === 'string' ? /\.arw$/i.test(displayName) : /\.arw$/i.test(pickedUri);
 
       let finalUri = pickedUri;
       if (isArw) {
+        setRawOriginalUri(pickedUri);
         setRawConverting(true);
         startRawConversionTimer();
         try {
-          Toast.show('Converting RAW to full-resolution image…', Toast.SHORT);
-          finalUri = await RawImageProcessor.convertArwToPng(pickedUri);
+          const initial = await RawImageProcessor.convertArwToPng(pickedUri);
+          finalUri = initial.uri;
+          const isPreview = initial.stage === 'preview';
+          console.log(
+            `[RAW] conversion output: ${
+              initial.stage === 'full' ? 'full-res BMP' : 'preview JPEG'
+            } -> ${initial.uri} (${initial.width}x${initial.height})`,
+          );
+          if (!isPreview) setRawOriginalUri(null);
         } catch (err: any) {
           Toast.show(
             `RAW conversion failed, using original source: ${err?.message ?? err}`,
@@ -343,6 +362,8 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
           stopRawConversionTimer();
           setRawConverting(false);
         }
+      } else {
+        setRawOriginalUri(null);
       }
 
       setDisplayUri(finalUri);
@@ -351,6 +372,26 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
       if (!DocumentPicker.isCancel(e)) {
         Toast.show(`Could not open file: ${e?.message ?? e}`, Toast.LONG);
       }
+    }
+  };
+
+  const handleLoadFullRes = async () => {
+    if (!rawOriginalUri || rawFullLoading) return;
+    setRawFullLoading(true);
+    try {
+      const full = await RawImageProcessor.convertArwToFullBmp(rawOriginalUri);
+      if (full.stage === 'full') {
+        setDisplayUri(full.uri);
+        setRawOriginalUri(null);
+        console.log(
+          `[RAW] preview replaced with full-res BMP -> ${full.uri} (${full.width}x${full.height})`,
+        );
+      }
+    } catch (err: any) {
+      console.log(`[RAW] full decode failed: ${err?.message ?? err}`);
+      Toast.show(`Full-res decode failed: ${err?.message ?? err}`, Toast.LONG);
+    } finally {
+      setRawFullLoading(false);
     }
   };
 
@@ -537,7 +578,12 @@ const CaptureScreen = ({ route, navigation }: CaptureProps) => {
 
       {/* ---------- Full-screen image viewer (captured/loaded image) ---------- */}
       {viewerOpen && displayUri && (
-        <FullScreenImageViewer uri={displayUri} onClose={() => setViewerOpen(false)} />
+        <FullScreenImageViewer
+          uri={displayUri}
+          onClose={() => setViewerOpen(false)}
+          onLoadFullRes={rawOriginalUri ? handleLoadFullRes : undefined}
+          fullResLoading={rawFullLoading}
+        />
       )}
 
       {/* ---------- Full-screen stream viewer (live preview) ---------- */}
